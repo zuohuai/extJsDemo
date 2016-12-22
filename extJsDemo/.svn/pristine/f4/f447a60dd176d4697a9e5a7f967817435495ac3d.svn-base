@@ -1,0 +1,27 @@
+package com.my9yu.charge.ws.exception;
+
+/**
+ * 请求被拒绝异常
+ * @author Frank
+ */
+public class RequestForbiddenException extends RuntimeException {
+
+	private static final long serialVersionUID = -8810488859224679483L;
+
+	public RequestForbiddenException() {
+		super();
+	}
+
+	public RequestForbiddenException(String message, Throwable cause) {
+		super(message, cause);
+	}
+
+	public RequestForbiddenException(String message) {
+		super(message);
+	}
+
+	public RequestForbiddenException(Throwable cause) {
+		super(cause);
+	}
+
+}

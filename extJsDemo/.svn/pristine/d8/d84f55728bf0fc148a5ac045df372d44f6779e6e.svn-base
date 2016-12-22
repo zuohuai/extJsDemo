@@ -1,0 +1,32 @@
+package com.my9yu.charge.facade;
+
+import com.my9yu.common.socket.core.Command;
+
+/**
+ * 充值指令
+ * @author Frank
+ */
+public interface ChargeCommand {
+
+	/** 按帐号名进行充值 */
+	Command CHARGE_BY_ACCOUNT = Command.valueOf(ChargeModule.CHARGE_BY_ACCOUNT, ChargeModule.MODULES);
+	/** 按角色名进行充值 */
+	Command CHARGE_BY_PLAYER = Command.valueOf(ChargeModule.CHARGE_BY_PLAYER, ChargeModule.MODULES);
+	/** 按目标标识进行充值 */
+	Command CHARGE_BY_TARGET = Command.valueOf(ChargeModule.CHARGE_BY_TARGET, ChargeModule.MODULES);
+
+	/** 按帐号名进行充值 */
+	Command ORDER_BY_ACCOUNT = Command.valueOf(ChargeModule.ORDER_BY_ACCOUNT, ChargeModule.MODULES);
+	/** 按角色名进行充值 */
+	Command ORDER_BY_PLAYER = Command.valueOf(ChargeModule.ORDER_BY_PLAYER, ChargeModule.MODULES);
+	/** 按目标标识进行充值 */
+	Command ORDER_BY_TARGET = Command.valueOf(ChargeModule.ORDER_BY_TARGET, ChargeModule.MODULES);
+
+	/** 查询指定帐号名 */
+	Command QUERY_BY_ACCOUNT = Command.valueOf(ChargeModule.QUERY_BY_ACCOUNT, ChargeModule.MODULES);
+	/** 查询指定角色名 */
+	Command QUERY_BY_PLAYER = Command.valueOf(ChargeModule.QUERY_BY_PLAYER, ChargeModule.MODULES);
+	/** 查询指定用户标识 */
+	Command QUERY_BY_TARGET = Command.valueOf(ChargeModule.QUERY_BY_TARGET, ChargeModule.MODULES);
+
+}

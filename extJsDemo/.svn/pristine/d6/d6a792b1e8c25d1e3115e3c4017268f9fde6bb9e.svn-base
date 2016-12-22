@@ -1,0 +1,48 @@
+package com.my9yu.charge.common.server.model;
+
+import java.util.List;
+
+import com.my9yu.charge.common.server.entity.GameInstance;
+import com.my9yu.charge.common.server.entity.Operator;
+import com.my9yu.charge.common.server.entity.Server;
+
+/** 复制运营商、服务器、游戏实例列表 */
+public class CopyServerData {
+	private List<Operator> operatorList;
+	private List<Server> serverList;
+	private List<GameInstance> gameInstanceList;
+
+	CopyServerData() {
+	}
+
+	public CopyServerData(List<Operator> operatorList, List<Server> serverList, List<GameInstance> gameInstanceList) {
+		this.operatorList = operatorList;
+		this.serverList = serverList;
+		this.gameInstanceList = gameInstanceList;
+	}
+
+	public List<Operator> getOperatorList() {
+		return operatorList;
+	}
+
+	public void setOperatorList(List<Operator> operatorList) {
+		this.operatorList = operatorList;
+	}
+
+	public List<Server> getServerList() {
+		return serverList;
+	}
+
+	public void setServerList(List<Server> serverList) {
+		this.serverList = serverList;
+	}
+
+	public List<GameInstance> getGameInstanceList() {
+		return gameInstanceList;
+	}
+
+	public void setGameInstanceList(List<GameInstance> gameInstanceList) {
+		this.gameInstanceList = gameInstanceList;
+	}
+
+}

@@ -1,0 +1,63 @@
+package com.my9yu.charge.model;
+
+import org.codehaus.jackson.map.annotate.JsonSerialize;
+import org.codehaus.jackson.map.annotate.JsonSerialize.Inclusion;
+
+import com.my9yu.charge.facade.ChargeCode;
+
+/**
+ * 内购订单信息
+ * @author ramon
+ */
+@JsonSerialize(include = Inclusion.NON_NULL)
+public class OrderInfo {
+	private ChargeCode code;
+
+	/** 订单序号 */
+	private String serial;
+	/** 订单金额 */
+	private int money;
+	/** 订单信息 */
+	private String addition;
+
+	public ChargeCode getCode() {
+		return code;
+	}
+
+	public void setCode(ChargeCode code) {
+		this.code = code;
+	}
+
+	public String getSerial() {
+		return serial;
+	}
+
+	public void setSerial(String serial) {
+		this.serial = serial;
+	}
+
+	public int getMoney() {
+		return money;
+	}
+
+	public void setMoney(int money) {
+		this.money = money;
+	}
+
+	public String getAddition() {
+		return addition;
+	}
+
+	public void setAddition(String addition) {
+		this.addition = addition;
+	}
+
+	public static OrderInfo valueOf(ChargeCode code, String serial, int money, String addition) {
+		OrderInfo e = new OrderInfo();
+		e.code = code;
+		e.serial = serial;
+		e.money = money;
+		e.addition = addition;
+		return e;
+	}
+}

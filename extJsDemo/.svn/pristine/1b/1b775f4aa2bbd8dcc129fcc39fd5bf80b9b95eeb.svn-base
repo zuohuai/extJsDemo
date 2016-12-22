@@ -1,0 +1,127 @@
+package com.my9yu.charge.repository;
+
+import static org.hamcrest.CoreMatchers.is;
+import static org.junit.Assert.assertThat;
+
+import java.util.Calendar;
+import java.util.Date;
+import java.util.List;
+
+import org.junit.After;
+import org.junit.Before;
+import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.test.context.ContextConfiguration;
+import org.springframework.test.context.junit4.SpringJUnit4ClassRunner;
+
+import com.my9yu.charge.entity.Charge;
+import com.my9yu.charge.entity.ChargeType;
+import com.my9yu.charge.facade.ChargeCode;
+import com.my9yu.charge.model.ChargeTarget;
+
+@RunWith(SpringJUnit4ClassRunner.class)
+@ContextConfiguration(locations = "classpath:/test-context.xml")
+public class ChargeRepositoryTest {
+
+	@Autowired
+	private ChargeRepository chargeRepository;
+
+	// private final String collection = "test";
+
+	@Before
+	public void before() {
+		Calendar calendar = Calendar.getInstance();
+		calendar.set(Calendar.YEAR, 2000);
+		calendar.set(Calendar.MONTH, Calendar.JANUARY);
+		calendar.set(Calendar.DATE, 1);
+		calendar.set(Calendar.HOUR, 0);
+		calendar.set(Calendar.MINUTE, 0);
+		calendar.set(Calendar.SECOND, 0);
+		calendar.set(Calendar.MILLISECOND, 0);
+		for (int i = 0; i < 10; i++) {
+			Date time = calendar.getTime();
+			Charge entity = Charge.valueOfComplete(1, "order-" + i, ChargeType.ACCOUNT, "account", true, 10, 100, null,
+					ChargeCode.DONE, ChargeTarget.valueOf("account", "player", "id", null, 0));
+			entity.setCompleteTime(time);
+			chargeRepository.save(1, entity);
+			calendar.add(Calendar.HOUR, 1);
+		}
+		calendar.set(Calendar.HOUR, 0);
+		for (int i = 0; i < 10; i++) {
+			Date time = calendar.getTime();
+			Charge entity = Charge.valueOfRetry(1, "retry-" + i, ChargeType.ACCOUNT, "account", true, 10, 100, null,
+					ChargeCode.SOCKET_ERROR, new Date());
+			entity.setCompleteTime(time);
+			chargeRepository.save(1, entity);
+			calendar.add(Calendar.HOUR, 1);
+		}
+	}
+
+	@Test
+	public void test_remove() {
+		for (int i = 0; i < 10; i++) {
+			chargeRepository.remove(1, 1, "order-" + i);
+		}
+		for (int i = 0; i < 10; i++) {
+			chargeRepository.remove(1, 1, "retry-" + i);
+		}
+	}
+
+	@After
+	public void after() {
+		// chargeRepository.drop(collection);
+	}
+
+	@Test
+	// @Ignore
+	public void test_isExist() {
+		assertThat(chargeRepository.isExist(1, 1, "order_id"), is(false));
+		assertThat(chargeRepository.isExist(1, 1, "order-0"), is(true));
+	}
+
+	@Test
+	// @Ignore
+	public void test_findCompleteAfter() {
+		Calendar calendar = Calendar.getInstance();
+		calendar.set(Calendar.YEAR, 2000);
+		calendar.set(Calendar.MONTH, Calendar.JANUARY);
+		calendar.set(Calendar.DATE, 1);
+		calendar.set(Calendar.HOUR, 0);
+		calendar.set(Calendar.MINUTE, 0);
+		calendar.set(Calendar.SECOND, 0);
+		calendar.set(Calendar.MILLISECOND, 0);
+		List<Charge> charges = chargeRepository.findCompleteAfter(1, calendar.getTime().getTime());
+		assertThat(charges.size(), is(9));
+		calendar.set(Calendar.HOUR, 5);
+		charges = chargeRepository.findCompleteAfter(1, calendar.getTime().getTime());
+		assertThat(charges.size(), is(4));
+	}
+
+	@Test
+	// @Ignore
+	public void test_findCompleteBetween() {
+		Calendar calendar = Calendar.getInstance();
+		calendar.set(Calendar.YEAR, 2000);
+		calendar.set(Calendar.MONTH, Calendar.JANUARY);
+		calendar.set(Calendar.DATE, 1);
+		calendar.set(Calendar.HOUR, 0);
+		calendar.set(Calendar.MINUTE, 0);
+		calendar.set(Calendar.SECOND, 0);
+		calendar.set(Calendar.MILLISECOND, 0);
+		long start = calendar.getTime().getTime();
+		calendar.set(Calendar.HOUR, 5);
+		long end = calendar.getTime().getTime();
+
+		List<Charge> charges = chargeRepository.findCompleteBetween(1, start, end);
+		assertThat(charges.size(), is(4));
+	}
+
+	@Test
+	// @Ignore
+	public void test_findWait() {
+		List<Charge> charges = chargeRepository.findWait(1);
+		assertThat(charges.size(), is(10));
+	}
+
+}

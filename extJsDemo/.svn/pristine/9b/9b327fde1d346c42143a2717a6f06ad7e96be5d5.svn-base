@@ -1,0 +1,177 @@
+package com.my9yu.charge.ws.query;
+
+import java.util.HashMap;
+import java.util.Map;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.stereotype.Controller;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestMethod;
+import org.springframework.web.bind.annotation.RequestParam;
+
+import com.my9yu.charge.common.server.entity.Operator;
+import com.my9yu.charge.common.server.entity.Server;
+import com.my9yu.charge.common.server.service.ServerService;
+import com.my9yu.charge.facade.ChargeCommand;
+import com.my9yu.charge.model.ChargeTarget;
+import com.my9yu.common.socket.client.Client;
+import com.my9yu.common.socket.client.ClientFactory;
+import com.my9yu.common.socket.core.Command;
+import com.my9yu.common.socket.core.Request;
+import com.my9yu.common.socket.core.Response;
+import com.my9yu.common.utils.model.Result;
+
+/**
+ * 查询充值目标信息
+ * @author Frank
+ */
+@Controller
+@RequestMapping("queryplayer")
+@SuppressWarnings({"rawtypes", "unchecked"})
+public class QueryPlayerController {
+	
+	private static final Logger logger = LoggerFactory.getLogger(QueryPlayerController.class);
+	
+	@Autowired
+	private ClientFactory clientFactory;
+	@Autowired
+	private ServerService serverService;
+
+	/** 查询指定帐号的信息 */
+	@RequestMapping(value = "account/{oid}/{sid}", method = RequestMethod.GET)
+	public ResponseEntity<Result<ChargeTarget>> byAccount(@PathVariable int oid, @PathVariable int sid, @RequestParam String content) {
+		Operator operator = serverService.getOperator(oid);
+		if (operator == null) {
+			return new ResponseEntity<Result<ChargeTarget>>(
+					new Result<ChargeTarget>(QueryCode.OPERATOR_ERROR), HttpStatus.OK);
+		}
+		Server server =serverService.findServer(operator.getId(), sid);
+		if (server == null) {
+			//return new ResponseEntity<ChargeTarget>(HttpStatus.BAD_REQUEST);
+			return new ResponseEntity<Result<ChargeTarget>>(
+					new Result<ChargeTarget>(QueryCode.SERVER_ERROR), HttpStatus.OK);
+		}
+		try {
+			// 发送查询请求
+			Client client = clientFactory.getClient(server.getAddress(), false);
+			Map<String, Object> body = toRequestBody(oid, sid, content);
+			Command cmd = ChargeCommand.QUERY_BY_ACCOUNT;
+			Request<Map<String, Object>> request = Request.valueOf(cmd, body);
+			Response response = client.send(request);
+			// 查询结果处理
+			if (response.hasError()) {
+				return new ResponseEntity<Result<ChargeTarget>>(
+						new Result<ChargeTarget>(QueryCode.QUERY_ERROR), HttpStatus.OK);
+			}
+			Result<ChargeTarget> result = (Result<ChargeTarget>) response.getBody();
+			if (result.getCode() == Result.SUCCESS) {
+				//return new ResponseEntity<ChargeTarget>(result.getContent(), HttpStatus.OK);
+				return new ResponseEntity<Result<ChargeTarget>>(
+						new Result<ChargeTarget>(QueryCode.QUERY_SUCC, result.getContent()), HttpStatus.OK);
+			} else {
+				//return new ResponseEntity<ChargeTarget>(HttpStatus.NOT_FOUND);
+				return new ResponseEntity<Result<ChargeTarget>>(
+						new Result<ChargeTarget>(QueryCode.PLAYER_NOTFOUND), HttpStatus.OK);
+			}
+		} catch (Exception e) {
+			logger.error("查询失败无法连接游戏服[{}]", server.getAddress(), e);
+			//return new ResponseEntity<ChargeTarget>(HttpStatus.SERVICE_UNAVAILABLE);
+			return new ResponseEntity<Result<ChargeTarget>>(
+					new Result<ChargeTarget>(QueryCode.NETWORK_ERROR), HttpStatus.OK);
+		}
+	}
+	
+	/** 查询指定角色的信息 */
+	@RequestMapping(value = "player/{oid}/{sid}", method = RequestMethod.GET)
+	public ResponseEntity<Result<ChargeTarget>> byPlayer(@PathVariable int oid, @PathVariable int sid, @RequestParam String content) {
+		Operator operator = serverService.getOperator(oid);
+		if (operator == null) {
+			return new ResponseEntity<Result<ChargeTarget>>(
+					new Result<ChargeTarget>(QueryCode.OPERATOR_ERROR), HttpStatus.OK);
+		}
+		Server server =serverService.findServer(operator.getId(), sid);
+		if (server == null) {
+			return new ResponseEntity<Result<ChargeTarget>>(
+					new Result<ChargeTarget>(QueryCode.SERVER_ERROR), HttpStatus.OK);
+		}
+		try {
+			// 发送查询请求
+			Client client = clientFactory.getClient(server.getAddress(), false);
+			Map<String, Object> body = toRequestBody(oid, sid, content);
+			Command cmd = ChargeCommand.QUERY_BY_PLAYER;
+			Request<Map<String, Object>> request = Request.valueOf(cmd, body);
+			Response response = client.send(request);
+			// 查询结果处理
+			if (response.hasError()) {
+				return new ResponseEntity<Result<ChargeTarget>>(
+						new Result<ChargeTarget>(QueryCode.QUERY_ERROR), HttpStatus.OK);
+			}
+			Result<ChargeTarget> result = (Result<ChargeTarget>) response.getBody();
+			if (result.getCode() == Result.SUCCESS) {
+				return new ResponseEntity<Result<ChargeTarget>>(
+						new Result<ChargeTarget>(QueryCode.QUERY_SUCC, result.getContent()), HttpStatus.OK);
+			} else {
+				return new ResponseEntity<Result<ChargeTarget>>(
+						new Result<ChargeTarget>(QueryCode.PLAYER_NOTFOUND), HttpStatus.OK);
+			}
+		} catch (Exception e) {
+			logger.error("查询失败无法连接游戏服[{}]", server.getAddress(), e);
+			return new ResponseEntity<Result<ChargeTarget>>(
+					new Result<ChargeTarget>(QueryCode.NETWORK_ERROR), HttpStatus.OK);
+		}
+	}
+
+	/** 查询指定标识的信息 */
+	@RequestMapping(value = "target/{oid}/{sid}", method = RequestMethod.GET)
+	public ResponseEntity<Result<ChargeTarget>> byTarget(@PathVariable int oid, @PathVariable int sid, @RequestParam String content) {
+		Operator operator = serverService.getOperator(oid);
+		if (operator == null) {
+			return new ResponseEntity<Result<ChargeTarget>>(
+					new Result<ChargeTarget>(QueryCode.OPERATOR_ERROR), HttpStatus.OK);
+		}
+		Server server =serverService.findServer(operator.getId(), sid);
+		if (server == null) {
+			return new ResponseEntity<Result<ChargeTarget>>(
+					new Result<ChargeTarget>(QueryCode.SERVER_ERROR), HttpStatus.OK);
+		}
+		try {
+			// 发送查询请求
+			Client client = clientFactory.getClient(server.getAddress(), false);
+			Map<String, Object> body = toRequestBody(oid, sid, content);
+			Command cmd = ChargeCommand.QUERY_BY_TARGET;
+			Request<Map<String, Object>> request = Request.valueOf(cmd, body);
+			Response response = client.send(request);
+			// 查询结果处理
+			if (response.hasError()) {
+				return new ResponseEntity<Result<ChargeTarget>>(
+						new Result<ChargeTarget>(QueryCode.QUERY_ERROR), HttpStatus.OK);
+			}
+			Result<ChargeTarget> result = (Result<ChargeTarget>) response.getBody();
+			if (result.getCode() == Result.SUCCESS) {
+				return new ResponseEntity<Result<ChargeTarget>>(
+						new Result<ChargeTarget>(QueryCode.QUERY_SUCC, result.getContent()), HttpStatus.OK);
+			} else {
+				return new ResponseEntity<Result<ChargeTarget>>(
+						new Result<ChargeTarget>(QueryCode.PLAYER_NOTFOUND), HttpStatus.OK);
+			}
+		} catch (Exception e) {
+			logger.error("查询失败无法连接游戏服[{}]", server.getAddress(), e);
+			return new ResponseEntity<Result<ChargeTarget>>(
+					new Result<ChargeTarget>(QueryCode.NETWORK_ERROR), HttpStatus.OK);
+		}
+	}
+
+	private Map<String, Object> toRequestBody(int oid, int sid, String content) {
+		Map<String, Object> result = new HashMap<String, Object>(3);
+		result.put("oid", oid);
+		result.put("sid", sid);
+		result.put("content", content);
+		return result;
+	}
+
+}

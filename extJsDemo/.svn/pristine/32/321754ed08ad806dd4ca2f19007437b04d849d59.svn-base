@@ -1,0 +1,50 @@
+package com.my9yu.charge;
+
+/**
+ * 充值服配置信息
+ * @author Frank
+ */
+public class Config {
+
+	/** 重试基础间隔 */
+	private int retryInterval = 60;
+	/** 重试间隔倍数 */
+	private int retryTimes = 2;
+	/** 最大重试次数 */
+	private int retryMax = 10;
+	/** 延时队列修正时间 */
+	private int delayTimes = 300000;
+
+	public int getRetryInterval() {
+		return retryInterval;
+	}
+
+	public void setRetryInterval(int retryInterval) {
+		this.retryInterval = retryInterval;
+	}
+
+	public int getRetryTimes() {
+		return retryTimes;
+	}
+
+	public void setRetryTimes(int retryTimes) {
+		this.retryTimes = retryTimes;
+	}
+
+	public int getDelayTimes() {
+		return delayTimes;
+	}
+
+	public void setDelayTimes(int delayTimes) {
+		this.delayTimes = delayTimes;
+	}
+
+	public int getRetryMax() {
+		return retryMax;
+	}
+
+	public void setRetryMax(int retryMax) {
+		this.retryMax = retryMax;
+	}
+
+}

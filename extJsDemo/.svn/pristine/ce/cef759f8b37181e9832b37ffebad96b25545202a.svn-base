@@ -1,0 +1,420 @@
+package com.my9yu.charge.service;
+
+import java.util.Calendar;
+import java.util.Collections;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
+import javax.annotation.PostConstruct;
+
+import org.apache.mina.core.RuntimeIoException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.slf4j.helpers.FormattingTuple;
+import org.slf4j.helpers.MessageFormatter;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+
+import com.my9yu.charge.Config;
+import com.my9yu.charge.common.server.entity.Operator;
+import com.my9yu.charge.common.server.entity.Server;
+import com.my9yu.charge.common.server.service.ServerService;
+import com.my9yu.charge.entity.Charge;
+import com.my9yu.charge.entity.ChargeState;
+import com.my9yu.charge.entity.ChargeType;
+import com.my9yu.charge.facade.ChargeCode;
+import com.my9yu.charge.facade.ChargeCommand;
+import com.my9yu.charge.model.ChargeTarget;
+import com.my9yu.charge.model.RetryCharge;
+import com.my9yu.charge.repository.ChargeRepository;
+import com.my9yu.charge.tencent.TencentConfig;
+import com.my9yu.common.scheduler.impl.FixTimeDelayQueue;
+import com.my9yu.common.socket.client.Client;
+import com.my9yu.common.socket.client.ClientFactory;
+import com.my9yu.common.socket.core.Command;
+import com.my9yu.common.socket.core.Request;
+import com.my9yu.common.socket.core.Response;
+import com.my9yu.common.socket.exception.SocketException;
+import com.my9yu.common.utils.concurrent.DelayedElement;
+import com.my9yu.common.utils.model.Result;
+import com.my9yu.common.utils.time.DateUtils;
+
+@Service
+public class ChargeService {
+
+	private static final Logger logger = LoggerFactory.getLogger(ChargeService.class);
+
+	@Autowired
+	private ClientFactory clientFactory;
+	@Autowired
+	private ChargeRepository chargeRepository;
+	@Autowired
+	private ServerService serverService;
+	@Autowired
+	private Config config;
+	@Autowired
+	private TencentConfig tencentConfig;
+
+	private Map<String, Set<String>> temporaries = new HashMap<String, Set<String>>();
+
+	private FixTimeDelayQueue<DelayedElement<RetryCharge>> retryQueue;
+
+	@PostConstruct
+	protected void init() {
+		
+		if(tencentConfig.isEnable()) {
+			return;
+		}
+
+		retryQueue = new FixTimeDelayQueue<DelayedElement<RetryCharge>>(config.getDelayTimes());
+		for (Operator operator : serverService.allOperator()) {
+			if (!operator.isRetry()) {
+				continue;
+			}
+			List<Charge> charges = chargeRepository.findWait(operator.getId());
+			for (Charge charge : charges) {
+				RetryCharge retryCharge = RetryCharge.valueOf(operator.getId(), charge.getServer(), charge.getOrder());
+				retryQueue.put(new DelayedElement<RetryCharge>(retryCharge, charge.getRetryTime()));
+				if (logger.isDebugEnabled()) {
+					logger.debug("重新载入补单信息[{}]计划执行时间[{}]", retryCharge,
+							DateUtils.date2String(charge.getRetryTime(), DateUtils.PATTERN_DATE_TIME));
+				}
+			}
+		}
+		Thread retryThread = new Thread(new Runnable() {
+			@Override
+			public void run() {
+				while (true) {
+					try {
+						DelayedElement<RetryCharge> e = retryQueue.take();
+						RetryCharge retryCharge = e.getContent();
+						if (logger.isDebugEnabled()) {
+							if (logger.isDebugEnabled()) {
+								logger.debug("补单信息[{}]到达执行时间[{}]", retryCharge,
+										DateUtils.date2String(e.getEnd(), DateUtils.PATTERN_DATE_TIME));
+							}
+						}
+						Operator operator = serverService.getOperator(retryCharge.getOid());
+						if (operator == null) {
+							continue;	// 运营商已经不存在
+						}
+						if (!operator.isRetry()) {
+							continue;	// 运营商已经关闭了自动补单
+						}
+						Server server = serverService.findServer(operator.getId(), retryCharge.getSid());
+						if (server == null) {
+							continue;	// 游戏服已经不存在
+						}
+						Charge current = chargeRepository.get(retryCharge.getOid(), retryCharge.getSid(),
+								retryCharge.getOrder());
+						if (current == null || current.getState() != ChargeState.WAIT) {
+							continue;	// 充值订单不存在或状态不正确
+						}
+						doRetryCharge(operator, server, retryCharge.getSid(), current);
+					} catch (InterruptedException e) {
+						logger.error("过期（个人）邮件清理线程被打断", e);
+					} catch (Exception e) {
+						logger.error("过期邮件清理线程出现未知异常", e);
+					}
+				}
+			}
+		}, "充值重试");
+		retryThread.setDaemon(true);
+		retryThread.start();
+	}
+
+	/** 按帐号进行充值 */
+	public ChargeCode chargeByAccount(Operator operator, Server server, Integer sid, String order, String account,
+			int money, int gold, String addition, int source, boolean isTest) {
+		// 检查是否重复订单
+		int oid = operator.getId();
+		if (isExist(oid, sid, order)) {
+			if (logger.isWarnEnabled()) {
+				FormattingTuple message = MessageFormatter.arrayFormat("运营商[{}]服务器[{}]的充值订单[{}]重复", new Object[] { oid,
+					sid, order });
+				logger.warn(message.getMessage());
+			}
+			return ChargeCode.ORDER_DUPLICATE;
+		}
+		try {
+			return doCharge(source, oid, sid, ChargeType.ACCOUNT, account, operator, server, order, money, gold,
+					addition, isTest);
+		} finally {
+			release(oid, sid, order);
+		}
+	}
+
+	/** 按角色名进行充值 */
+	public ChargeCode chargeByPlayer(Operator operator, Server server, Integer sid, String order, String player,
+			int money, int gold, String addition, int source, boolean isTest) {
+		// 检查是否重复订单
+		int oid = operator.getId();
+		if (isExist(oid, sid, order)) {
+			if (logger.isWarnEnabled()) {
+				FormattingTuple message = MessageFormatter.arrayFormat("运营商[{}]服务器[{}]的充值订单[{}]重复", new Object[] { oid,
+					sid, order });
+				logger.warn(message.getMessage());
+			}
+			return ChargeCode.ORDER_DUPLICATE;
+		}
+		try {
+			return doCharge(source, oid, sid, ChargeType.PLAYER, player, operator, server, order, money, gold,
+					addition, isTest);
+		} finally {
+			release(oid, sid, order);
+		}
+	}
+
+	/** 按目标标识进行充值 */
+	public ChargeCode chargeByTarget(Operator operator, Server server, int sid, String order, String target, int money,
+			int gold, String addition, int source, Boolean isTest) {
+		// 检查是否重复订单
+		int oid = operator.getId();
+		if (isExist(oid, sid, order)) {
+			if (logger.isWarnEnabled()) {
+				FormattingTuple message = MessageFormatter.arrayFormat("运营商[{}]服务器[{}]的充值订单[{}]重复", new Object[] { oid,
+					sid, order });
+				logger.warn(message.getMessage());
+			}
+			return ChargeCode.ORDER_DUPLICATE;
+		}
+		try {
+			return doCharge(source, oid, sid, ChargeType.TARGET, target, operator, server, order, money, gold,
+					addition, isTest);
+		} finally {
+			release(oid, sid, order);
+		}
+	}
+
+	/** 充值的业务逻辑 */
+	@SuppressWarnings({ "rawtypes", "unchecked" })
+	protected ChargeCode doCharge(int source, int oid, int sid, ChargeType type, String content, Operator operator,
+			Server server, String orginOrder, int money, int gold, String addition, boolean isTest) {
+		ChargeCode code = null;
+		ChargeTarget target = null;
+		// 修改订单编号, 避免重复
+		String order = oid + "_" + sid + "_" + orginOrder;
+		// 检查是否测试充值
+		boolean test = isTest || isTest(type, content, operator);
+		try {
+			// 发送充值请求
+			Client client = clientFactory.getClient(server.getAddress(), false);
+			Map<String, Object> requestBody = toRequestBody(oid, sid, type, content, order, money, gold, addition);
+			Command command = getChargeCommand(type);
+			Request<Map<String, Object>> request = Request.valueOf(command, requestBody);
+			Response response = client.send(request);
+			// 充值请求结果处理
+			if (response.hasError()) {
+				logger.error("state:" + response.getState());
+				code = ChargeCode.PROCESS_ERROR;
+			} else {
+				Result<ChargeTarget> result = (Result<ChargeTarget>) response.getBody();
+				code = ChargeCode.valueOf(result.getCode());
+				target = result.getContent();
+			}
+		} catch (SocketException e) {
+			code = ChargeCode.SOCKET_ERROR;
+			if (logger.isWarnEnabled()) {
+				logger.warn("充值失败无法连接充值服[{}],订单[{}]", new Object[] { server.getAddress(), orginOrder, e });
+			}
+		} catch (RuntimeIoException e) {
+			code = ChargeCode.SOCKET_ERROR;
+			if (logger.isWarnEnabled()) {
+				logger.warn("充值失败无法连接充值服[{}],订单[{}]", new Object[] { server.getAddress(), orginOrder, e });
+			}
+		} catch (Exception e) {
+			code = ChargeCode.UNKNOWN_ERROR;
+			logger.error("未知的充值异常:", e);
+		}
+
+		if (code.isSuccess()) {
+			// 充值成功
+			String info = target.getAddition();
+			if (target.getGold() > 0) {
+				gold = target.getGold();
+			}
+			Charge entity = Charge.valueOfComplete(source, sid, order, type, content, test, money, gold, info, code,
+					target);
+			chargeRepository.save(oid, entity);
+			return code;
+		}
+		if (code.isRetry() && operator.isRetry()) {
+			// 记录并准备进行充值重试
+			Charge entity = Charge.valueOfRetry(source, sid, order, type, content, test, money, gold, addition, code,
+					getNextRetryTime(0));
+			chargeRepository.save(oid, entity);
+			retryQueue.put(DelayedElement.valueOf(RetryCharge.valueOf(operator.getId(), sid, order),
+					entity.getRetryTime()));
+			logger.error("重新补单信息[{}]计划执行时间[{}]", entity.getOrder(),
+					DateUtils.date2String(entity.getRetryTime(), DateUtils.PATTERN_DATE_TIME));
+			return ChargeCode.ACCEPTED;
+		}
+		// 充值失败并不进行充值重试
+		return code;
+	}
+
+	private Command getChargeCommand(ChargeType type) {
+		Command command = null;
+		switch (type) {
+		case ACCOUNT:
+			command = ChargeCommand.CHARGE_BY_ACCOUNT;
+			break;
+		case PLAYER:
+			command = ChargeCommand.CHARGE_BY_PLAYER;
+			break;
+		case TARGET:
+			command = ChargeCommand.CHARGE_BY_TARGET;
+			break;
+		default:
+			throw new IllegalStateException("未支持的充值类型:" + type);
+		}
+		return command;
+	}
+
+	/** 重试充值 */
+	@SuppressWarnings({ "rawtypes", "unchecked" })
+	protected void doRetryCharge(Operator operator, Server server, Integer serverId, Charge charge) {
+		ChargeCode code = null;
+		ChargeTarget target = null;
+		try {
+			// 发送充值请求
+			Client client = clientFactory.getClient(server.getAddress(), false);
+			Map<String, Object> requestBody = toRequestBody(operator.getId(), serverId, charge.getType(),
+					charge.getContent(), charge.getOrder(), charge.getMoney(), charge.getGold(), charge.getAddition());
+			Command command = getChargeCommand(charge.getType());
+			Request<Map<String, Object>> request = Request.valueOf(command, requestBody);
+			Response response = client.send(request);
+			// 充值请求结果处理
+			if (response.hasError()) {
+				code = ChargeCode.PROCESS_ERROR;
+			} else {
+				Result<ChargeTarget> result = (Result<ChargeTarget>) response.getBody();
+				code = ChargeCode.valueOf(result.getCode());
+				target = result.getContent();
+			}
+		} catch (SocketException e) {
+			code = ChargeCode.SOCKET_ERROR;
+			if (logger.isWarnEnabled()) {
+				logger.warn("充值失败无法连接充值服[{}]", server.getAddress(), e);
+			}
+		} catch (RuntimeIoException e) {
+			code = ChargeCode.SOCKET_ERROR;
+			if (logger.isWarnEnabled()) {
+				logger.warn("充值失败无法连接充值服[{}]", server.getAddress(), e);
+			}
+		} catch (Exception e) {
+			code = ChargeCode.UNKNOWN_ERROR;
+			logger.error("未知的充值异常:", e);
+		}
+
+		if (code.isSuccess()) {
+			// 补单成功
+			charge.retryComplete(code, target);
+			logger.error("重新补单信息[{}] - 重试[{}]次成功!!!", charge.getOrder(), charge.getRetry());
+		} else {
+			// 补单失败
+			charge.retryFailed(code, getNextRetryTime(charge.getRetry() + 1));
+			if (code.isRetry() && charge.getRetry() < config.getRetryMax()) {
+				// 准备进行再次充值重试
+				retryQueue.add(DelayedElement.valueOf(
+						RetryCharge.valueOf(operator.getId(), serverId, charge.getOrder()), charge.getRetryTime()));
+				logger.error("重新补单信息[{}] - 重试[{}]计划执行时间[{}]", new Object[] { charge.getOrder(), charge.getRetry(),
+					DateUtils.date2String(charge.getRetryTime(), DateUtils.PATTERN_DATE_TIME) });
+			} else {
+				charge.setState(ChargeState.CANCEL);
+				logger.error("重新补单信息[{}] - [{}]次失败停止重试, 异常[{}] - {}",
+						new Object[] { charge.getOrder(), charge.getRetry(), code.getValue(), code.getDescription() });
+			}
+		}
+		chargeRepository.save(operator.getId(), charge);
+	}
+
+	/** 检查订单号是否存在 */
+	protected boolean isExist(int operatorId, int serverId, String order) {
+		Set<String> temporary = getTemporaryOrders(operatorId, serverId);
+		if (temporary.contains(order)) {
+			return true;
+		}
+		if (chargeRepository.isExist(operatorId, serverId, order)) {
+			return true;
+		}
+		return !temporary.add(order);
+	}
+
+	/** 释放临时订单号 */
+	protected void release(int operatorId, int serverId, String order) {
+		Set<String> temporary = getTemporaryOrders(operatorId, serverId);
+		temporary.remove(order);
+	}
+
+	/** 获取下次重试的时间 */
+	private Date getNextRetryTime(int times) {
+		int sec = config.getRetryInterval() * (times / config.getRetryTimes() + 1);
+		Calendar calendar = Calendar.getInstance();
+		calendar.add(Calendar.SECOND, sec);
+		return calendar.getTime();
+	}
+
+	/** 检查是否测试充值 */
+	private boolean isTest(ChargeType type, String content, Operator operator) {
+		switch (type) {
+		case ACCOUNT:
+			return operator.getTestAccounts().contains(content);
+		case PLAYER:
+			return operator.getTestPlayers().contains(content);
+		case TARGET:
+			return operator.getTestTargets().contains(content);
+		default:
+			throw new IllegalArgumentException("未支持的处理类型:" + type);
+		}
+	}
+
+	/** 获取请求信息体 */
+	private Map<String, Object> toRequestBody(int oid, int sid, ChargeType type, String content, String order,
+			int money, int gold, String addition) {
+		Map<String, Object> requestBody = new HashMap<String, Object>(7);
+		requestBody.put("oid", oid);
+		requestBody.put("sid", sid);
+		requestBody.put("order", order);
+		switch (type) {
+		case ACCOUNT:
+			requestBody.put("account", content);
+			break;
+		case PLAYER:
+			requestBody.put("player", content);
+			break;
+		case TARGET:
+			requestBody.put("target", content);
+			break;
+		default:
+			break;
+		}
+		requestBody.put("money", money);
+		requestBody.put("gold", gold);
+		if (addition != null) {
+			requestBody.put("addition", addition);
+		}
+		return requestBody;
+	}
+
+	/** 获取临时订单号集合 */
+	private Set<String> getTemporaryOrders(int operatorId, int serverId) {
+		String name = operatorId + "_" + serverId;
+		if (temporaries.containsKey(name)) {
+			return temporaries.get(name);
+		}
+		synchronized (this) {
+			if (temporaries.containsKey(name)) {
+				return temporaries.get(name);
+			}
+			Set<String> orders = Collections.synchronizedSet(new HashSet<String>());
+			temporaries.put(name, orders);
+			return orders;
+		}
+	}
+
+}

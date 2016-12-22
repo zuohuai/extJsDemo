@@ -1,0 +1,183 @@
+package com.my9yu.charge.tencent.ws;
+
+import java.util.Map;
+
+import javax.servlet.http.HttpServletRequest;
+
+import org.apache.commons.lang3.StringUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Controller;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestMethod;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.ResponseBody;
+
+import com.my9yu.charge.tencent.TencentConfig;
+import com.my9yu.charge.tencent.facade.CallbackCode;
+import com.my9yu.charge.tencent.model.CallbackRet;
+import com.my9yu.charge.tencent.service.CallbackService;
+import com.my9yu.charge.utils.HttpHelper;
+import com.my9yu.common.utils.json.JsonUtils;
+import com.my9yu.common.utils.model.Result;
+import com.my9yu.common.utils.model.ResultCode;
+
+/**
+ * 腾讯赠送回调控制器
+ * @author Ramon
+ */
+@RequestMapping("callback")
+@Controller
+public class PresentCallbackController {
+	private static final Logger logger = LoggerFactory.getLogger(PresentCallbackController.class);
+
+	private static final int MAX_TIME_DIFF = 15 * 60 * 1000;
+
+	@Autowired
+	private CallbackService tencent;
+
+	@Autowired
+	private TencentConfig tencentConfig;
+
+	/**
+	 * 物品赠送发货回调
+	 * 
+	 * <pre>
+	 * 参数名称	类型	描述
+	 * @param openid		string		与APP通信的用户key，跳转到应用首页后，URL后会带该参数。由平台直接传给应用，应用原样传给平台即可。
+	 * 									根据APPID以及QQ号码生成，即不同的appid下，同一个QQ号生成的OpenID是不一样的。
+	 * @param appid			string		应用的唯一ID。可以通过appid查找APP基本信息。
+	 * @param ts			string		linux时间戳。
+	 * 									注意开发者的机器时间与腾讯计费开放平台的时间相差不能超过15分钟。
+	 * @param payitem		string		物品信息。使用ID*price*num的格式。
+	 * 									ID表示物品ID，price表示单价（以Q点为单位，单价最少不能少于2Q点。1Q币=10Q点），num表示数量。
+	 * 									例如物品1的ID为G001，该物品的单价为10Q点，数量为1，则payitem为：G001*10*1。
+	 * 									注：一个礼包中若包含多种物品，物品是分开发放的，不支持批量发放，即一个请求只发放一种物品，所以，payitem里始终只有一种物品的信息。因此如果是多个物品，建议在申请活动的配置礼包环节，将多个物品放在一起配置一个ID。
+	 * @param discountid	string		赠送道具/物品的营销活动ID。
+	 * 									登录op.open.qq.com后进入管理中心，选择进入1个应用后，在“支付结算”tab下的“营销接入”中提交活动申请，即可获取活动批号信息。
+	 * @param token			string		（1）开通包月送礼包活动中，该token为应用调用v3/pay/get_token接口获取的领取道具/物品的token。
+	 * 									（2）抽奖送礼包和单笔消耗送礼包活动中，该token为应用调用v3/pay/buy_goods接口获取的领取道具/物品的token。
+	 * 									该token有效期为72小时。必须在获取到token后的72小时内传递该token，否则将会返回token不存在的错误。
+	 * @param billno		string		赠送道具流水号（64个字符长度。该字段和openid合起来是唯一的）。
+	 * @param version		string		协议版本号，由于基于V3版OpenAPI，这里一定返回“v3”。
+	 * @param zoneid		string		在支付营销分区配置说明页面，配置的分区ID即为这里的“zoneid”。
+	 * 									如果应用不分区，则为0。
+	 * 									回调发货的时候，根据这里填写的zoneid实现分区发货。
+	 * @param providetype	string		发货类型，这里请传入1。
+	 * 									0表示道具购买，1表示营销活动中的道具赠送，2表示交叉营销任务集市中的奖励发放。
+	 * @param sig			string		请求串的签名，由需要签名的参数生成。
+	 * 									（1）签名方法请见文档：腾讯开放平台第三方应用签名参数sig的说明。
+	 * 									（2）按照上述文档进行签名生成时，需注意回调协议里多加了一个步骤： 
+	 * 									在构造源串的第3步“将排序后的参数(key=value)用&拼接起来，并进行URL编码”之前，需对value先进行一次编码（编码规则为：除了 0~9 a~z A~Z !*() 之外其他字符按其ASCII码的十六进制加%进行表示，例如“-”编码为“%2D”）。
+	 * 									（3）以每次接收到的参数为准，接收到的所有参数除sig以外都要参与签名。为方便平台后续对协议进行扩展，请不要将参与签名的参数写死。
+	 * </pre>
+	 * @return
+	 */
+	@RequestMapping(value = "present", method = { RequestMethod.GET, RequestMethod.POST })
+	public @ResponseBody
+	CallbackRet callback(HttpServletRequest request, // HTTP 请求
+			@RequestParam String openid, 		// 根据APPID以及QQ号码生成，即不同的appid下，同一个QQ号生成的OpenID是不一样的。
+			@RequestParam String appid,			// 应用的唯一ID。可以通过appid查找APP基本信息。
+			@RequestParam String ts,			// linux时间戳。
+			@RequestParam String version,		// 协议版本号，由于基于V3版OpenAPI，这里一定返回“v3”。
+			@RequestParam String zoneid,		// 回调发货的时候，根据这里填写的zoneid实现分区发货。
+			@RequestParam String providetype, 	// 0表示道具购买，1表示营销活动中的道具赠送，2表示交叉营销任务集市中的奖励发放。
+			@RequestParam String billno,		// 赠送道具流水号（64个字符长度。该字段和openid合起来是唯一的）。
+			@RequestParam String token,			// 应用调用v3/pay/get_token或v3/pay/buy_goods接口成功返回的交易token。
+			@RequestParam String discountid,	// 赠送道具/物品的营销活动ID。
+			@RequestParam String payitem,		// 物品信息。使用ID*price*num的格式。
+			@RequestParam String sig			// (必须)请求串的签名，由需要签名的参数生成，除sig以外的所有参数都要参与签名。
+	) {
+		String method = request.getMethod().toLowerCase();
+		String path = request.getRequestURI();
+		Map<String, String> params = HttpHelper.getRequestParams(request);
+		String addition = JsonUtils.object2String(params);
+		if (logger.isInfoEnabled()) {
+			logger.info("充值服收到腾讯[{}]回调[{}], \n--请求参数 [{}], \n--参数JSON{}]",
+					new Object[] { method, path, request.getQueryString(), addition });
+		}
+		// 协议版本号
+		if (!StringUtils.equals("v3", version)) {
+			CallbackRet result = CallbackRet.valueOf(CallbackCode.INVAILD_PARAM, "协议版本不匹配");
+			if (logger.isInfoEnabled()) {
+				logger.info("回调接口返回[{}]", result);
+			}
+			return result;
+		}
+		// 发货类型
+		if (!StringUtils.equals("1", providetype)) {
+			CallbackRet result = CallbackRet.valueOf(CallbackCode.INVAILD_PARAM, "发货类型不匹配");
+			if (logger.isInfoEnabled()) {
+				logger.info("回调接口返回[{}]", result);
+			}
+			return result;
+		}
+		// 检查签名
+		if (!tencentConfig.isValidCallbackSign(method, path, params, sig)) {
+			CallbackRet result = CallbackRet.valueOf(CallbackCode.INVAILD_PARAM, "签名检查失败");
+			if (logger.isInfoEnabled()) {
+				logger.info("回调接口返回[{}]", result);
+			}
+			return result;
+		}
+		// 检查APPID
+		if (!appid.equalsIgnoreCase(tencentConfig.getAppid())) {
+			CallbackRet result = CallbackRet.valueOf(CallbackCode.INVAILD_PARAM, "APPID不匹配");
+			if (logger.isInfoEnabled()) {
+				logger.info("回调接口返回[{}]", result);
+			}
+			return result;
+		}
+		// 检查时间
+		if (StringUtils.isBlank(ts) || Math.abs(System.currentTimeMillis() - Long.valueOf(ts) * 1000) > MAX_TIME_DIFF) {
+			CallbackRet result = CallbackRet.valueOf(CallbackCode.TOKEN_TIMEOUT, "TOKEN超时");
+			if (logger.isInfoEnabled()) {
+				logger.info("回调接口返回[{}]", result);
+			}
+			return result;
+		}
+		// 检查购买物品信息
+		if (StringUtils.isBlank(payitem)) {
+			CallbackRet result = CallbackRet.valueOf(CallbackCode.INVAILD_PARAM, "购买物品信息为空");
+			if (logger.isInfoEnabled()) {
+				logger.info("回调接口返回[{}]", result);
+			}
+			return result;
+		}
+		try {
+			Map<String, Integer> items = tencentConfig.getItemsMap(payitem);
+			if (items.isEmpty()) {
+				CallbackRet result = CallbackRet.valueOf(CallbackCode.INVAILD_PARAM, "购买物品信息为空");
+				if (logger.isInfoEnabled()) {
+					logger.info("回调接口返回[{}]", result);
+				}
+				return result;
+			}
+			int server = Integer.valueOf(zoneid);
+			int operator = tencentConfig.getOperator();
+			Result<?> content = tencent.present(operator, server, openid, token, billno, items, addition);
+			int code = content.getCode();
+			if (code == ResultCode.SUCCESS) {
+				CallbackRet result = CallbackRet.valueOf(code, "OK");
+				if (logger.isInfoEnabled()) {
+					logger.info("回调接口返回[{}]", result);
+				}
+				return result;
+			}
+			CallbackRet result = CallbackRet.valueOf(code, (String) content.getContent());
+			if (logger.isInfoEnabled()) {
+				logger.info("回调接口返回[{}]", result);
+			}
+			return result;
+		} catch (Exception e) {
+			logger.error("程序错误", e);
+			CallbackRet result = CallbackRet.valueOf(CallbackCode.PROGRAM_ERROR, "程序错误");
+			if (logger.isInfoEnabled()) {
+				logger.info("回调接口返回[{}]", result);
+			}
+			return result;
+		}
+	}
+
+}

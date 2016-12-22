@@ -1,0 +1,327 @@
+package com.my9yu.tencent;
+
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+
+import javax.servlet.ServletRequest;
+import javax.servlet.http.HttpServletRequest;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.stereotype.Controller;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestMethod;
+import org.springframework.web.bind.annotation.RequestParam;
+
+import com.my9yu.charge.common.server.service.ServerService;
+import com.my9yu.charge.tencent.TencentConfig;
+import com.my9yu.charge.utils.HttpHelper;
+import com.my9yu.common.socket.client.Client;
+import com.my9yu.common.socket.client.ClientFactory;
+import com.my9yu.common.socket.core.Request;
+import com.my9yu.common.socket.core.Response;
+import com.my9yu.common.utils.json.JsonUtils;
+import com.my9yu.common.utils.model.Result;
+import com.my9yu.tencent.entity.Task;
+import com.my9yu.tencent.facade.ChargeTencentCommand;
+import com.my9yu.tencent.model.TaskInfo;
+import com.my9yu.tencent.model.TaskResult;
+import com.my9yu.tencent.model.ZoneInfo;
+import com.my9yu.tencent.model.ZoneInfo.TaskState;
+import com.my9yu.tencent.repository.TaskRepository;
+
+/**
+ * 腾讯任务集市
+ * @author ChenJia@my9yu.com
+ */
+@Controller
+@RequestMapping("taskmarket")
+public class TaskMarketController {
+
+	private static final Logger logger = LoggerFactory.getLogger(TaskMarketController.class);
+
+	private final ConcurrentHashMap<String, TaskInfo> taskInfos = new ConcurrentHashMap<String, TaskInfo>();
+
+	private final ConcurrentHashMap<String, String> addresses = new ConcurrentHashMap<String, String>();
+
+	@Autowired
+	private TencentConfig tencentConfig;
+	@Autowired
+	protected ServerService serverService;
+	@Autowired
+	private ClientFactory clientFactory;
+	@Autowired
+	private TaskRepository repository;
+
+	public static void main(String[] args) {
+		// 11:40:58,463 [http://*:9001-5] ERROR - method:get path:/tencent/taskmarket/check_reward
+		// params{"cmd":"award","pf":"qzone","providetype":"2","ts":"1415677258","payitem":"1111","contractid":"1101123997T320141016173746","appid":"1101123997","openid":"06E0045614D65A238CE24A8E3EBED163","billno":"891cea44a9e09d41129a7da194280c39","step":"1","version":"V3","sig":"6JyXariFVXVKs+fXf79Qp0c612Q="}
+		// sig:6JyXariFVXVKs+fXf79Qp0c612Q=
+		// 11:40:58,465 [http://*:9001-5] ERROR - TAR:9qzKAZ+CaBqz5UyYIhbztOyRagQ= -> SIG:6JyXariFVXVKs+fXf79Qp0c612Q=
+		// method:get path:/tencent/taskmarket/check_reward
+		// params{"cmd":"award","pf":"qzone","providetype":"2","ts":"1415678221","payitem":"1111","contractid":"1101123997T320141016173746","appid":"1101123997","openid":"06E0045614D65A238CE24A8E3EBED163","billno":"6abf5ca5d428125262898783c16cacc6","step":"1","version":"V3","sig":"R4/USBxeY01qgZbg8w05c4m9w50="}
+		// sig:R4/USBxeY01qgZbg8w05c4m9w50=
+		//
+		// String method = "get";
+		// String path= "/tencent/taskmarket/check_reward";
+		// Map<String, String> params =
+		// JsonUtils.string2Map("{\"cmd\":\"award\",\"pf\":\"qzone\",\"providetype\":\"2\",\"ts\":\"1415678221\",\"payitem\":\"1111\",\"contractid\":\"1101123997T320141016173746\",\"appid\":\"1101123997\",\"openid\":\"06E0045614D65A238CE24A8E3EBED163\",\"billno\":\"6abf5ca5d428125262898783c16cacc6\",\"step\":\"1\",\"version\":\"V3\",\"sig\":\"R4/USBxeY01qgZbg8w05c4m9w50=\"}",
+		// String.class, String.class);
+		// String sig = "R4/USBxeY01qgZbg8w05c4m9w50=";
+		// TencentConfig.isValidCallbackSign(method, path, params, sig);
+
+	}
+
+	/**
+	 * 腾讯任务集市回调接口 <br>
+	 * http://127.0.0.1:8000/tencent/taskmarket/checkReward?appid=1101123997&billno=4BE1D6AE-5324-11E3-BC76-
+	 * 00163EB7F40B&cmd=check_award&contractid=1501123997T320145015164036&openid=06E0045614D65A238CE24A8E3EBED163&payitem=pkg&pf=qzone&providetype=2&sig=q76%20ykHlZmwpJ1XP0GB5W4rG2C0=&step=1&ts=1385089780&version
+	 * = V 3
+	 * @param cmd check: 开发者仅需要查询任务步骤是否完成，返回步骤完成状态。 <br>
+	 *            check_award: 开发者需要查询任务步骤是否完成，若步骤已完成，直接给用户发货（payitem），并返回发货是否成功。<br>
+	 *            award: 平台通知开发者直接给给用户发货，开发者返回发货是否成功。
+	 * @return
+	 */
+	@RequestMapping(value = "checkReward", method = { RequestMethod.GET, RequestMethod.POST })
+	public ResponseEntity<TaskResult> checkReward(HttpServletRequest request) {
+
+		String method = request.getMethod().toLowerCase();
+		String path = request.getRequestURI();
+		Map<String, String> params = HttpHelper.getRequestParams(request);
+
+		String cmd = params.get("cmd");
+		String openid = params.get("openid");
+		String appid = params.get("appid");
+		String contractid = params.get("contractid");
+		int step = Integer.valueOf(params.get("step"));
+		String sig = params.get("sig");
+
+		logger.error("method:" + method + "\t path:" + path + "\t params" + JsonUtils.object2String(params) + "\t sig:"
+				+ sig);
+		// 检查签名
+		if (!tencentConfig.isValidCallbackSign(method, path, params, sig)) {
+			return new ResponseEntity<TaskResult>(TaskResult.valueOf(103, "请求参数错误", ""), HttpStatus.OK);
+		}
+		// 检查APPID
+		if (!appid.equalsIgnoreCase(tencentConfig.getAppid())) {
+			return new ResponseEntity<TaskResult>(TaskResult.valueOf(103, "请求参数错误", ""), HttpStatus.OK);
+		}
+
+		TaskInfo taskInfo = load(openid);
+		if (taskInfo == null) {
+			return new ResponseEntity<TaskResult>(TaskResult.valueOf(1, "用户尚未在应用内创建角色", ""), HttpStatus.OK);
+		}
+
+		// cmd
+
+		if ("check".equals(cmd)) {// 判断是否完成
+			ZoneInfo zone = taskInfo.check(contractid, step);
+			if (zone != null) {
+				return new ResponseEntity<TaskResult>(TaskResult.sucess(zone.getZoneid()), HttpStatus.OK);
+			} else {
+				logger.error("找不到用户的服务器信息openid:{}, contractid:{}, step:{}", new Object[] { openid, contractid, step });
+				return new ResponseEntity<TaskResult>(TaskResult.valueOf(2, "用户尚未完成本步骤", ""), HttpStatus.OK);
+			}
+
+		} else if ("check_award".equals(cmd)) {// 判断并且发奖
+			ZoneInfo zone = taskInfo.check(contractid, step);
+			if (zone != null) {
+				Result<String> result = sendReward(openid, contractid, step, zone.getOid(),
+						Integer.valueOf(zone.getZoneid()));
+				if (result == null) {
+					return new ResponseEntity<TaskResult>(TaskResult.valueOf(201, "发货通信异常", zone.getZoneid()),
+							HttpStatus.OK);
+				} else {
+					if (result.getCode() >= 0) {
+						return new ResponseEntity<TaskResult>(TaskResult.sucess(zone.getZoneid()), HttpStatus.OK);
+					} else {
+						taskInfo.updateStep(contractid, step, zone.getZoneid(), zone.getOid(), TaskState.REWARDED);
+						return new ResponseEntity<TaskResult>(TaskResult.valueOf(Math.abs(result.getCode()),
+								result.getContent(), null), HttpStatus.OK);
+					}
+				}
+			} else {
+				logger.error("找不到用户的服务器信息openid:{}, contractid:{}, step:{}", new Object[] { openid, contractid, step });
+				return new ResponseEntity<TaskResult>(TaskResult.valueOf(2, "用户尚未完成本步骤", ""), HttpStatus.OK);
+			}
+		} else if ("award".equals(cmd)) {
+			ZoneInfo zone = taskInfo.getLast(contractid);
+			if (zone != null) {
+				Result<String> result = sendReward(openid, contractid, step, zone.getOid(),
+						Integer.valueOf(zone.getZoneid()));
+				if (result == null) {
+					return new ResponseEntity<TaskResult>(TaskResult.valueOf(201, "发货通信异常", zone.getZoneid()),
+							HttpStatus.OK);
+				} else {
+					if (result.getCode() >= 0) {
+						return new ResponseEntity<TaskResult>(TaskResult.sucess(zone.getZoneid()), HttpStatus.OK);
+					} else {
+						return new ResponseEntity<TaskResult>(TaskResult.valueOf(-result.getCode(),
+								result.getContent(), null), HttpStatus.OK);
+					}
+				}
+			} else {
+				logger.error("找不到用户的服务器信息openid:{}, contractid:{}, step:{}", new Object[] { openid, contractid, step });
+				return new ResponseEntity<TaskResult>(TaskResult.valueOf(2, "用户尚未完成本步骤", ""), HttpStatus.OK);
+			}
+		}
+
+		return new ResponseEntity<TaskResult>(TaskResult.valueOf(103, "请求参数错误", ""), HttpStatus.OK);
+	}
+
+	// public static void main(String[] args) {
+	// try {
+	// String s = SnsSigCheck.encodeUrl("q76+ykHlZmwpJ1XP0GB5W4rG2C0=");
+	// System.out.println(s);
+	// } catch (OpensnsException e) {
+	// // TODO Auto-generated catch block
+	// e.printStackTrace();
+	// }
+	// }
+
+	/**
+	 * http://10.221.136.167:9001/tencent/taskmarket/updatesetp?oid=1&sid=6&port=8004&openid=791D
+	 * E929FAAFF2F4963F3F5B33BC86AB&contractid=1501123997T320145015164036&step=2&state=COMPLETE
+	 * @param request
+	 * @param oid
+	 * @param zoneid
+	 * @param port
+	 * @param openid
+	 * @param contractid
+	 * @param step
+	 * @param state
+	 * @return
+	 */
+	@RequestMapping(value = "updatesetp", method = { RequestMethod.GET, RequestMethod.POST })
+	public ResponseEntity<String> updateStep(HttpServletRequest request,//
+			@RequestParam("oid") int oid, 					// 运营商
+			@RequestParam("sid") String zoneid, 			// 区ID
+			@RequestParam("port") String port, 			// 区ID
+			@RequestParam("openid") String openid,			// 用户的Openid
+			@RequestParam("contractid") String contractid,	// 任务id在任务集市v3系统发布任务后，系统给任务分配的的唯一ID。
+			@RequestParam("step") int step, 				// 任务的步骤，step从1开始计。step=1表示第一步，四个步骤都是必选。
+			@RequestParam("state") String state				// 状态
+	) {
+
+		String address = getIp(request);
+		logger.error("服务器地址:" + address);
+		addresses.put(oid + "_" + zoneid, address + ":" + port);
+
+		TaskInfo taskInfo = load(openid);
+
+		ZoneInfo zoneInfo = taskInfo.updateStep(contractid, step, zoneid, oid, TaskState.valueOf(state));
+		Task task = Task.valueOf(zoneInfo.getId(), openid, contractid, zoneInfo.getStep(), oid,
+				Integer.valueOf(zoneInfo.getZoneid()), zoneInfo.getState(), zoneInfo.getUpdate());
+		repository.save(task);
+		zoneInfo.setId(task.getId());
+
+		return new ResponseEntity<String>(HttpStatus.OK);
+	}
+
+	/**
+	 * 注册服务器信息
+	 * @param request
+	 * @param oid
+	 * @param zoneid
+	 * @param port
+	 * @return
+	 */
+	@RequestMapping(value = "register", method = { RequestMethod.GET, RequestMethod.POST })
+	public ResponseEntity<String> register(HttpServletRequest request,//
+			@RequestParam("oid") int oid, 					// 运营商
+			@RequestParam("sid") String zoneid, 			// 区ID
+			@RequestParam("port") String port 			// 区ID
+	) {
+		String address = getIp(request);
+		logger.error("服务器地址:" + address);
+		addresses.put(oid + "_" + zoneid, address + ":" + port);
+		return new ResponseEntity<String>(HttpStatus.OK);
+	}
+
+	private String getIp(ServletRequest request) {
+		if (request instanceof HttpServletRequest) {
+			String ip = ((HttpServletRequest) request).getHeader("x-forwarded-for");
+			if (ip == null || ip.length() == 0 || "unknown".equalsIgnoreCase(ip)) {
+				ip = ((HttpServletRequest) request).getHeader("Proxy-Client-IP");
+			}
+			if (ip == null || ip.length() == 0 || "unknown".equalsIgnoreCase(ip)) {
+				ip = ((HttpServletRequest) request).getHeader("WL-Proxy-Client-IP");
+			}
+			if (ip == null || ip.length() == 0 || "unknown".equalsIgnoreCase(ip)) {
+				ip = request.getRemoteAddr();
+			}
+			return ip;
+		}
+		return request.getRemoteAddr();
+	}
+
+	// =============================private=====================================
+
+	/**
+	 * 加载玩家任务集市信息
+	 * @param openid
+	 * @return
+	 */
+	private TaskInfo load(String openid) {
+		TaskInfo result = taskInfos.get(openid);
+
+		if (result == null) {
+			result = TaskInfo.valueOf(openid);
+			TaskInfo old = taskInfos.putIfAbsent(openid, result);
+			if (old != null) {
+				result = old;
+			}
+		}
+
+		if (!result.isInit()) {
+			synchronized (result) {
+				if (!result.isInit()) {
+					logger.error("加载玩家信息" + openid);
+					List<Task> tasks = repository.findByOwner(openid);
+					if (tasks != null) {
+						for (Task task : tasks) {
+							ZoneInfo zoninInfo = result.updateStep(task.getId(), task.getContractid(), task.getStep(),
+									String.valueOf(task.getSid()), task.getOid(), task.getState(), task.getUpdate());
+							logger.error(JsonUtils.object2String(zoninInfo));
+						}
+					}
+					logger.error("加载玩家信息" + openid);
+				}
+				result.setInit(true);
+			}
+		}
+
+		return result;
+	}
+
+	@SuppressWarnings("unchecked")
+	private Result<String> sendReward(String openid, String contractid, int step, int oid, int sid) {
+
+		try {
+			// 发货
+			String address = addresses.get(oid + "_" + sid);
+			// 发送充值请求
+			Client client = clientFactory.getClient(address, false);
+			Map<String, Object> requestBody = new HashMap<String, Object>(7);
+			requestBody.put("openid", openid);
+			requestBody.put("contractid", contractid);
+			requestBody.put("step", step);
+			requestBody.put("oid", oid);
+			requestBody.put("sid", sid);
+			Request<Map<String, Object>> req = Request.valueOf(ChargeTencentCommand.REWARD_TASKMARKET, requestBody);
+			Response<Result<String>> response = (Response<Result<String>>) client.send(req);
+			Result<String> result = response.getBody();
+			return result;
+		} catch (Exception e) {
+			logger.error("发货异常 openid:[{}],contractid:[{}],step:[{}],oid:[{}],sid:[{}]", new Object[] { openid,
+				contractid, step, oid, sid, e });
+			return null;
+		}
+	}
+
+}

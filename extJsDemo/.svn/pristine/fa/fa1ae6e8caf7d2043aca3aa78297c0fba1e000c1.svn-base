@@ -1,0 +1,275 @@
+package com.my9yu.tencent.model;
+
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.List;
+import java.util.concurrent.ConcurrentHashMap;
+
+import com.my9yu.tencent.model.ZoneInfo.TaskState;
+
+/**
+ * 任务信息
+ * @author ChenJia@my9yu.com
+ */
+public class TaskInfo {
+
+	private String openid;
+
+	/** <contractid,step> */
+	private ConcurrentHashMap<String, Integer> steps = new ConcurrentHashMap<String, Integer>();
+
+	/** <contractid,List<ZoneInfo>> */
+	private ConcurrentHashMap<String, HashMap<String, ZoneInfo>> taskInfos = new ConcurrentHashMap<String, HashMap<String, ZoneInfo>>();
+	
+	private boolean init = false;
+	
+	public synchronized boolean isInit() {
+		return init;
+	}
+
+	public synchronized  void setInit(boolean init) {
+		this.init = init;
+	}
+
+	public synchronized ZoneInfo updateStep(String contractid, final int step, String zoneid, int oid, TaskState state) {
+
+		HashMap<String, ZoneInfo> zoneInfos = taskInfos.get(contractid);
+
+		if (zoneInfos == null) {
+			zoneInfos = new HashMap<String, ZoneInfo>();
+			taskInfos.put(contractid, zoneInfos);
+		}
+
+		ZoneInfo zoneInfo = zoneInfos.get(oid + "_" + zoneid);
+
+		if (zoneInfo == null) {
+			zoneInfo = ZoneInfo.valueOf(oid, zoneid, step, new Date(), state);
+			zoneInfos.put(oid + "_" + zoneid, zoneInfo);
+		}
+
+		if (zoneInfo.getStep() < step) {
+			zoneInfo.setStep(step);
+			zoneInfo.setState(state);
+		} else {
+			if (zoneInfo.getState() == TaskState.GOING) {
+				zoneInfo.setState(state);
+			}
+		}
+		zoneInfo.setUpdate(new Date());
+
+		Integer old = steps.get(contractid);
+		if (old == null || old < step) {
+			steps.put(contractid, step);
+		}
+
+		return zoneInfo;
+	}
+
+	public synchronized ZoneInfo updateStep(String id, String contractid, final int step, String zoneid, int oid, TaskState state,
+			Date update) {
+
+		HashMap<String, ZoneInfo> zoneInfos = taskInfos.get(contractid);
+
+		if (zoneInfos == null) {
+			zoneInfos = new HashMap<String, ZoneInfo>();
+			taskInfos.put(contractid, zoneInfos);
+		}
+
+		ZoneInfo zoneInfo = zoneInfos.get(oid + "_" + zoneid);
+
+		if (zoneInfo == null) {
+			zoneInfo = ZoneInfo.valueOf(id, oid, zoneid, step, update, state);
+			zoneInfos.put(oid + "_" + zoneid, zoneInfo);
+		}
+		
+		if (zoneInfo.getStep() < step) {
+			zoneInfo.setStep(step);
+			zoneInfo.setState(state);
+		} else {
+			if (zoneInfo.getState() == TaskState.GOING) {
+				zoneInfo.setState(state);
+			}
+		}
+
+		Integer old = steps.get(contractid);
+		if (old == null || old < step) {
+			steps.put(contractid, step);
+		}
+
+		return zoneInfo;
+	}
+
+	/**
+	 * 判断任务是否完成到某步骤
+	 * @param contractid
+	 * @param step
+	 * @return zoneid
+	 */
+	public synchronized ZoneInfo check(String contractid, final int step) {
+
+		Integer tmp = steps.get(contractid);
+
+		if (tmp == null) {
+			return null;
+		}
+
+		if (tmp < step) {
+			return null;
+		}
+
+		HashMap<String, ZoneInfo> zoneInfos = taskInfos.get(contractid);
+
+		if (zoneInfos == null || zoneInfos.isEmpty()) {
+			return null;
+		}
+
+		List<ZoneInfo> result = new ArrayList<ZoneInfo>();
+		for (ZoneInfo zoneInfo : zoneInfos.values()) {
+			if (zoneInfo.getStep() > step || (zoneInfo.getStep() == step && (zoneInfo.getState() == TaskState.COMPLETE || zoneInfo.getState() == TaskState.REWARDED))) {
+				result.add(zoneInfo);
+			}
+		}
+
+		if (result.isEmpty()) {
+			return null;
+		}
+
+		// 返回最近完成任务的区ID
+		Collections.sort(result, new Comparator<ZoneInfo>() {
+			@Override
+			public int compare(ZoneInfo o1, ZoneInfo o2) {
+				return o2.getUpdate().compareTo(o1.getUpdate());
+			}
+		});
+
+		return result.get(0);
+	}
+	
+	/**
+	 * 获取最近完成任务的一个区
+	 * @param contractid
+	 * @return
+	 */
+	public synchronized ZoneInfo getLast(String contractid) {
+		Integer tmp = steps.get(contractid);
+
+		if (tmp == null) {
+			return null;
+		}
+
+		HashMap<String, ZoneInfo> zoneInfos = taskInfos.get(contractid);
+
+		if (zoneInfos == null || zoneInfos.isEmpty()) {
+			return null;
+		}
+		
+		List<ZoneInfo> result = new ArrayList<ZoneInfo>();
+		for (ZoneInfo zoneInfo : zoneInfos.values()) {
+			result.add(zoneInfo);
+		}
+		// 返回最近完成任务的区ID
+		Collections.sort(result, new Comparator<ZoneInfo>() {
+			@Override
+			public int compare(ZoneInfo o1, ZoneInfo o2) {
+				return o2.getUpdate().compareTo(o1.getUpdate());
+			}
+		});
+
+		return result.get(0);
+		
+	}
+
+	/**
+	 * 获取玩家信息
+	 * @param contractid
+	 * @param step
+	 * @return zoneid
+	 */
+	public synchronized ZoneInfo get(String contractid, final int step) {
+
+		Integer tmp = steps.get(contractid);
+
+		if (tmp == null) {
+			return null;
+		}
+
+		HashMap<String, ZoneInfo> zoneInfos = taskInfos.get(contractid);
+
+		if (zoneInfos == null || zoneInfos.isEmpty()) {
+			return null;
+		}
+
+		List<ZoneInfo> result = new ArrayList<ZoneInfo>();
+		for (ZoneInfo zoneInfo : zoneInfos.values()) {
+			if (zoneInfo.getStep() >= step) {
+				result.add(zoneInfo);
+			}
+		}
+
+		if (result.isEmpty()) {
+			return null;
+		}
+
+		// 返回最近完成任务的区ID
+		Collections.sort(result, new Comparator<ZoneInfo>() {
+			@Override
+			public int compare(ZoneInfo o1, ZoneInfo o2) {
+				return o2.getUpdate().compareTo(o1.getUpdate());
+			}
+		});
+
+		return result.get(0);
+	}
+
+	public String getOpenid() {
+		return openid;
+	}
+
+	public void setOpenid(String openid) {
+		this.openid = openid;
+	}
+
+	public static TaskInfo valueOf(String openid) {
+		TaskInfo result = new TaskInfo();
+		result.openid = openid;
+		return result;
+	}
+
+	public static void main(String[] args) {
+		TaskInfo taskInfo = new TaskInfo();
+
+		taskInfo.updateStep("001", 1, "1", 1, TaskState.COMPLETE);
+
+		try {
+			Thread.sleep(1000L);
+		} catch (InterruptedException e) {
+			e.printStackTrace();
+		}
+
+		taskInfo.updateStep("001", 1, "2", 1, TaskState.COMPLETE);
+
+		try {
+			Thread.sleep(1000L);
+		} catch (InterruptedException e) {
+			e.printStackTrace();
+		}
+
+		taskInfo.updateStep("001", 2, "1", 1, TaskState.COMPLETE);
+
+		try {
+			Thread.sleep(1000L);
+		} catch (InterruptedException e) {
+			e.printStackTrace();
+		}
+
+		taskInfo.updateStep("002", 1, "2", 1, TaskState.COMPLETE);
+
+		ZoneInfo zoneid = taskInfo.check("001", 1);
+		System.out.println(zoneid);
+
+	}
+
+}

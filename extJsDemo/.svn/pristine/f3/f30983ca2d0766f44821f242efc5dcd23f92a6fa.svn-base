@@ -1,0 +1,51 @@
+package com.my9yu.charge.admin;
+
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.stereotype.Controller;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestMethod;
+import org.springframework.web.bind.annotation.RequestParam;
+
+import com.my9yu.charge.common.server.entity.Operator;
+import com.my9yu.charge.common.server.service.ServerService;
+import com.my9yu.charge.entity.Charge;
+import com.my9yu.charge.entity.ChargeCollection;
+import com.my9yu.charge.repository.ChargeRepository;
+
+/**
+ * 批量获取充值订单接口
+ * @author Frank
+ */
+@Controller
+@RequestMapping("charges/complete")
+public class ChargesController {
+
+	@Autowired
+	private ChargeRepository chargeRepository;
+	@Autowired
+	private ServerService operatorService;
+
+	/** 获取指定时间点之间的全部完成充值记录(不包括指定时间点,全部服务器) */
+	@RequestMapping(value = "between", method = RequestMethod.GET)
+	public ResponseEntity<Map<String, ChargeCollection>> allBetween(@RequestParam(value = "from") long from,
+			@RequestParam(value = "to") long to) {
+		final Map<String, ChargeCollection> body = new HashMap<String, ChargeCollection>();
+		final Collection<Operator> operators = operatorService.allOperator();
+		for (Operator operator : operators) {
+			final int operatorId = operator.getId();
+			List<Charge> chargeList = chargeRepository.findCompleteBetween(operatorId, from, to);
+			ChargeCollection chargeCollection = new ChargeCollection();
+			chargeCollection.setChargeList(chargeList);
+			body.put(String.valueOf(operatorId), chargeCollection);
+		}
+		return new ResponseEntity<Map<String, ChargeCollection>>(body, HttpStatus.OK);
+	}
+
+}

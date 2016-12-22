@@ -1,0 +1,249 @@
+package com.my9yu.charge.common.server.model;
+
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
+
+import com.my9yu.charge.common.server.entity.Operator;
+
+public class OperatorVO {
+
+	/** 运营商标识 */
+	private int id;
+	/** 运营商名 */
+	private String name;
+	/** 运营商昵称 */
+	private String nick;
+
+	/** 其他信息 */
+	private String informations;
+
+	/** 充值通信密匙 */
+	private String key;
+	/** 是否自动补单 */
+	private boolean retry;
+	/** 是否支持附加充值信息 */
+	private boolean addition;
+	/** 运营商许可IP */
+	private List<String> allowIps = new ArrayList<String>();
+	/** 运营商登录白名单IP */
+	private List<String> whiteIps = new ArrayList<String>();
+	/** 测试充值帐号(使按帐号充值不产生充值记录) */
+	private Set<String> testAccounts = new HashSet<String>();
+	/** 测试充值角色名(使按角色充值不产生充值记录) */
+	private Set<String> testPlayers = new HashSet<String>();
+	/** 测试充值标识(使按标识充值不产生充值记录) */
+	private Set<String> testTargets = new HashSet<String>();
+
+	/** 登陆标识 */
+	private String loginId;
+	/** 登陆密匙 */
+	private String loginKey;
+	/** 登陆地址 */
+	private String loginUrl;
+
+	/** 授权用户 */
+	private List<String> authorization_accounts;
+
+	private long createTime;
+
+	public Operator valueOfOperator() {
+		Operator operator = new Operator();
+		operator.setId(id);
+		operator.setName(name);
+		operator.setNick(nick);
+		operator.setKey(key);
+		operator.setRetry(retry);
+		operator.setAddition(addition);
+		operator.setAllowIps(allowIps);
+		operator.setWhiteIps(whiteIps);
+		operator.setTestAccounts(testAccounts);
+		operator.setTestPlayers(testPlayers);
+		operator.setTestTargets(testTargets);
+		operator.setInformations(informations);
+		operator.setLoginKey(loginKey);
+		operator.setLoginUrl(loginUrl);
+		operator.setLoginId(loginId);
+		operator.setCreateTime(System.currentTimeMillis());
+		return operator;
+	}
+
+	/**
+	 * 更新充值服运营商
+	 **/
+	public Operator updateChargeOperator(Operator operator) {
+		operator.setName(name);
+		operator.setKey(key);
+		operator.setNick(nick);
+		operator.setRetry(retry);
+		operator.setAddition(addition);
+		operator.setAllowIps(allowIps);
+		operator.setWhiteIps(whiteIps);
+		operator.setTestAccounts(testAccounts);
+		operator.setTestPlayers(testPlayers);
+		operator.setTestTargets(testTargets);
+		operator.setInformations(informations);
+		operator.setLoginKey(loginKey);
+		operator.setLoginUrl(loginUrl);
+		operator.setLoginId(loginId);
+		operator.setCreateTime(System.currentTimeMillis());
+		return operator;
+	}
+
+	/**
+	 * 添加充值服运营商
+	 **/
+	public Operator addChargeOperator() {
+		Operator operator = Operator.valueOfCharge(id, name, nick, informations, loginId, loginKey, loginUrl, key,
+				addition, allowIps, testAccounts, testPlayers, testTargets, System.currentTimeMillis(), retry);
+		return operator;
+	}
+
+	OperatorVO() {
+	}
+
+	public OperatorVO(Operator operator) {
+		this.id = operator.getId();
+		this.name = operator.getName();
+		this.nick = operator.getNick();
+		this.informations = operator.getInformations();
+	}
+
+	public long getCreateTime() {
+		return createTime;
+	}
+
+	public void setCreateTime(long createTime) {
+		this.createTime = createTime;
+	}
+
+	public List<String> getAuthorization_accounts() {
+		return authorization_accounts;
+	}
+
+	public void setAuthorization_accounts(List<String> authorization_accounts) {
+		this.authorization_accounts = authorization_accounts;
+	}
+
+	public String getLoginId() {
+		return loginId;
+	}
+
+	public void setLoginId(String loginId) {
+		this.loginId = loginId;
+	}
+
+	public int getId() {
+		return id;
+	}
+
+	public String getNick() {
+		return nick;
+	}
+
+	public void setNick(String nick) {
+		this.nick = nick;
+	}
+
+	public String getLoginKey() {
+		return loginKey;
+	}
+
+	public void setLoginKey(String loginKey) {
+		this.loginKey = loginKey;
+	}
+
+	public String getLoginUrl() {
+		return loginUrl;
+	}
+
+	public void setLoginUrl(String loginUrl) {
+		this.loginUrl = loginUrl;
+	}
+
+	public void setId(int id) {
+		this.id = id;
+	}
+
+	public String getKey() {
+		return key;
+	}
+
+	public void setKey(String key) {
+		this.key = key;
+	}
+
+	public boolean isRetry() {
+		return retry;
+	}
+
+	public void setRetry(boolean retry) {
+		this.retry = retry;
+	}
+
+	public boolean isAddition() {
+		return addition;
+	}
+
+	public void setAddition(boolean addition) {
+		this.addition = addition;
+	}
+
+	public List<String> getAllowIps() {
+		return allowIps;
+	}
+
+	public void setAllowIps(List<String> allowIps) {
+		this.allowIps = allowIps;
+	}
+
+	public List<String> getWhiteIps() {
+		return whiteIps;
+	}
+
+	public void setWhiteIps(List<String> whiteIps) {
+		this.whiteIps = whiteIps;
+	}
+
+	public Set<String> getTestAccounts() {
+		return testAccounts;
+	}
+
+	public void setTestAccounts(Set<String> testAccounts) {
+		this.testAccounts = testAccounts;
+	}
+
+	public Set<String> getTestPlayers() {
+		return testPlayers;
+	}
+
+	public void setTestPlayers(Set<String> testPlayers) {
+		this.testPlayers = testPlayers;
+	}
+
+	public Set<String> getTestTargets() {
+		return testTargets;
+	}
+
+	public void setTestTargets(Set<String> testTargets) {
+		this.testTargets = testTargets;
+	}
+
+	public String getName() {
+		return name;
+	}
+
+	public void setName(String name) {
+		this.name = name;
+	}
+
+	public String getInformations() {
+		return informations;
+	}
+
+	public void setInformations(String informations) {
+		this.informations = informations;
+	}
+
+}

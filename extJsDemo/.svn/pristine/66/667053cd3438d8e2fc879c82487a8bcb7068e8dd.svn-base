@@ -1,0 +1,93 @@
+package com.my9yu.charge.facade;
+
+import java.util.HashMap;
+import java.util.Map;
+
+/**
+ * 充值回应状态码
+ * @author Frank
+ */
+public enum ChargeCode {
+
+	/** 充值成功(已经完成) */
+	DONE(0, true, false, "充值成功(已经完成)"),
+	/** 充值请求被接受(未完成) */
+	ACCEPTED(1, true, false, "充值请求被接受(未完成)"),
+	/** 无效的帐号名 */
+	ACCOUNT_INVALID(-1, false, false, "无效的帐号名"),
+	/** 无效的角色名 */
+	PLAYER_INVALID(-2, false, false, "无效的角色名"),
+	/** 无效的充值目标标识 */
+	TARGET_INVALID(-3, false, false, "无效的充值目标标识"),
+	/** 重复的订单号 */
+	ORDER_DUPLICATE(-4, false, false, "重复的订单号"),
+	/** 无效的充值信息 */
+	INVALID_CHARGE(-5, false, false, "无效的充值信息"),
+	/** 无效的附加充值信息 */
+	ADDTION_INVALID(-6, false, false, "无效的附加充值信息"),
+	/** 与游戏服通讯异常 */
+	SOCKET_ERROR(-7, false, true, "与游戏服通讯异常"),
+	/** 游戏服处理异常 */
+	PROCESS_ERROR(-8, false, false, "游戏服处理异常"),
+	
+	/** 扣除金币不足 */
+	GOLD_NOT_ENOUGH(-9, false, false, "扣除金币不足"),
+
+	/** 无效的充值信息 - 充值金额不匹配 */
+	INVALID_CHARGE_VALUE(-10, false, false, "充值金额不匹配"),
+	/** 无效的附加信息 - 购买商品不存在 */
+	ADDTION_INVALID_GOODS(-11, false, false, "购买商品不存在"),
+	/** 无效的附加信息 - 充值序号不存在 */
+	ADDTION_INVALID_SERIAL(-12, false, false, "充值序号不存在"),
+	
+	/** 未知错误 */
+	UNKNOWN_ERROR(-255, false, false, "未知错误");
+	
+	private static final Map<Integer, ChargeCode> CODES = new HashMap<Integer, ChargeCode>(ChargeCode.values().length);
+	static {
+		for (ChargeCode code : ChargeCode.values()) {
+			CODES.put(code.getValue(), code);
+		}
+	}
+	/** 构造方法 */
+	public static ChargeCode valueOf(int code) {
+		ChargeCode result = CODES.get(code);
+		if (result == null) {
+			throw new IllegalArgumentException("无效的充值状态码:" + code);
+		}
+		return result;
+	}
+
+	/** 状态码值 */
+	private final int value;
+	/** 是否成功状态码 */
+	private final boolean success;
+	/** 是否需要重试 */
+	private final boolean retry;
+	/** 状态描述 */
+	private final String description;
+
+	private ChargeCode(int value, boolean success, boolean retry, String description) {
+		this.value = value;
+		this.retry = retry;
+		this.success = success;
+		this.description = description;
+	}
+
+	public int getValue() {
+		return value;
+	}
+
+	public boolean isSuccess() {
+		return success;
+	}
+
+	public boolean isRetry() {
+		return retry;
+	}
+
+	public String getDescription() {
+		return description;
+	}
+
+}

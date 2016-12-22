@@ -1,0 +1,46 @@
+package com.my9yu.charge.tencent.model;
+
+import org.codehaus.jackson.map.annotate.JsonSerialize;
+
+import com.my9yu.charge.tencent.facade.CallbackCode;
+import com.my9yu.common.utils.json.JsonUtils;
+
+/**
+ * 腾讯回调返回结果
+ * @author ramon
+ */
+@JsonSerialize
+public class CallbackRet {
+
+	private int ret;
+
+	private String msg;
+
+	public int getRet() {
+		return ret;
+	}
+
+	public String getMsg() {
+		return msg;
+	}
+
+	@Override
+	public String toString() {
+		return JsonUtils.object2String(this);
+	}
+
+	public static CallbackRet valueOf(int ret, String msg) {
+		CallbackRet result = new CallbackRet();
+		result.ret = ret;
+		result.msg = msg;
+		return result;
+	}
+
+	public static CallbackRet valueOf(CallbackCode code, String msg) {
+		CallbackRet result = new CallbackRet();
+		result.ret = code.getCode();
+		result.msg = msg;
+		return result;
+	}
+
+}

@@ -1,0 +1,182 @@
+package com.my9yu.charge.common.server.entity;
+
+import org.codehaus.jackson.annotate.JsonIgnore;
+import org.springframework.data.annotation.Id;
+import org.springframework.data.annotation.Transient;
+import org.springframework.data.mongodb.core.mapping.Document;
+
+import com.my9yu.charge.common.server.model.ServerInfo;
+
+/**
+ * 服务器
+ */
+@Document
+public class Server {
+
+	/**
+	 * oid_sid
+	 **/
+	@Id
+	private String id;
+
+	/** 运营商 */
+	private int operator;
+
+	/** 标识符 */
+	private int server;
+
+	/**
+	 * 游戏实例ID 地址映射 {@link GameInstance}
+	 */
+	private String address;
+
+	/** 服务器名称 */
+	private String name;
+
+	/** 其他信息 */
+	private String informations;
+
+	/** 创建时间 */
+	private long createTime;
+
+	/** 开服时间 */
+	private Long startTime;
+
+	/**
+	 * 服务器状态 <br>
+	 * <ul>
+	 * <li>0 - 正常
+	 * <li>1 - 维护中
+	 * <li>2 - 关闭注册
+	 * </ul>
+	 */
+	private int states;
+
+	@Transient
+	private ServerInfo serverInfo;
+
+	Server() {
+	}
+
+	public static String toId(int operator, int server) {
+		return operator + "_" + server;
+	}
+
+	public Server(int operator, int server, String address, String name, String informations, long createTime,
+			Long startTime) {
+		this.id = toId(operator, server);
+		this.operator = operator;
+		this.server = server;
+		this.address = address;
+		this.name = name;
+		this.informations = informations;
+		this.createTime = createTime;
+		this.startTime = startTime;
+		this.states = 0;
+	}
+
+	@JsonIgnore
+	public String getIP() {
+		return address.split(":")[0];
+	}
+
+	@JsonIgnore
+	public int getPort() {
+		return Integer.valueOf(address.split(":")[1]);
+	}
+
+	// 手动初始化
+	// public void init(boolean isInit) {
+	// if (informations == null)
+	// informations = "{}";
+	// if (isInit)
+	// serverInfo = JsonUtils.string2Object(informations, ServerInfo.class);
+	// }
+	//
+	// public void serializeInfo(boolean flag) {
+	// if (flag)
+	// informations = JsonUtils.object2String(serverInfo);
+	// }
+
+	// set get
+	public String getId() {
+		return id;
+	}
+
+	public void setId(String id) {
+		this.id = id;
+	}
+
+	public int getOperator() {
+		return operator;
+	}
+
+	public void setOperator(int operator) {
+		this.operator = operator;
+	}
+
+	public int getServer() {
+		return server;
+	}
+
+	public void setServer(int server) {
+		this.server = server;
+	}
+
+	public String getAddress() {
+		return address;
+	}
+
+	public void setAddress(String address) {
+		this.address = address;
+	}
+
+	public String getName() {
+		return name;
+	}
+
+	public void setName(String name) {
+		this.name = name;
+	}
+
+	public String getInformations() {
+		return informations;
+	}
+
+	public void setInformations(String informations) {
+		this.informations = informations;
+	}
+
+	public long getCreateTime() {
+		return createTime;
+	}
+
+	public void setCreateTime(long createTime) {
+		this.createTime = createTime;
+	}
+
+	public Long getStartTime() {
+		return startTime;
+	}
+
+	public void setStartTime(Long startTime) {
+		this.startTime = startTime;
+	}
+
+	public int getStates() {
+		return states;
+	}
+
+	public void setStates(int states) {
+		this.states = states;
+	}
+
+	public ServerInfo getServerInfo() {
+		return serverInfo;
+	}
+
+	public void setServerInfo(ServerInfo serverInfo) {
+		this.serverInfo = serverInfo;
+	}
+
+}

@@ -1,0 +1,36 @@
+package com.my9yu.charge.facade;
+
+import com.my9yu.common.protocol.annotation.Constant;
+import com.my9yu.common.utils.model.ResultCode;
+
+/**
+ * 充值返回状态码
+ * @author frank
+ */
+@Constant
+public interface ChargeResult extends ResultCode {
+
+	/** 帐号不存在 */
+	int ACCOUNT_INVALID = ChargeCode.ACCOUNT_INVALID.getValue();
+	/** 角色不存在 */
+	int PLAYER_INVALID = ChargeCode.PLAYER_INVALID.getValue();
+	/** 目标不存在 */
+	int TARGET_INVALID = ChargeCode.TARGET_INVALID.getValue();
+	/** 重复的订单 */
+	int ORDER_DUPLICATE = ChargeCode.ORDER_DUPLICATE.getValue();
+	/** 无效的附加信息 */
+	int ADDTION_INVALID = ChargeCode.ADDTION_INVALID.getValue();
+	/** 无效的充值信息 */
+	int INVALID_CHARGE = ChargeCode.INVALID_CHARGE.getValue();
+	/** 扣除金币不足 */
+	int GOLD_NOT_ENOUGH = ChargeCode.GOLD_NOT_ENOUGH.getValue();
+	
+	/** 无效的充值信息 - 充值金额不匹配 */
+	int INVALID_CHARGE_VALUE = ChargeCode.INVALID_CHARGE_VALUE.getValue();
+	
+	/** 无效的附加信息 - 购买商品不存在 */
+	int ADDTION_INVALID_GOODS = ChargeCode.ADDTION_INVALID_GOODS.getValue();
+	/** 无效的附加信息 - 充值序号不存在 */
+	int ADDTION_INVALID_SERIAL = ChargeCode.ADDTION_INVALID_SERIAL.getValue();
+	
+}

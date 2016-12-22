@@ -1,0 +1,67 @@
+package com.my9yu.charge.tencent.ws;
+
+import java.util.Map;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Controller;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestMethod;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.ResponseBody;
+
+import com.my9yu.charge.tencent.TencentConfig;
+import com.my9yu.common.utils.json.JsonUtils;
+
+/**
+ * 购买发货控制器, 由PHP充值接口调用
+ * @author Ramon
+ */
+@RequestMapping("helper")
+@Controller
+public class TencentHelperController {
+
+	@Autowired
+	private TencentConfig config;
+
+	/**
+	 * 腾讯运营商ID
+	 */
+	@RequestMapping(value = "oid", method = RequestMethod.GET)
+	@ResponseBody
+	public int oid() {
+		return config.getOperator();
+	}
+
+	/**
+	 * 腾讯应用ID
+	 */
+	@RequestMapping(value = "appid", method = RequestMethod.GET)
+	@ResponseBody
+	public String appid() {
+		return config.getAppid();
+	}
+
+	/**
+	 * 当前时间
+	 */
+	@RequestMapping(value = "time", method = RequestMethod.GET)
+	@ResponseBody
+	public int time() {
+		return (int) (System.currentTimeMillis() / 1000);
+	}
+
+	/**
+	 * 生成签名
+	 * @param method
+	 * @param url
+	 * @param params
+	 * @return
+	 */
+	@RequestMapping(value = "sig", method = RequestMethod.POST)
+	@ResponseBody
+	public String[] sig(@RequestParam String method, @RequestParam String url, @RequestParam String params) {
+		Map<String, String> map = JsonUtils.string2Map(params, String.class, String.class);
+		return new String[] { config.makeSign(method, url, map) };
+	}
+
+}

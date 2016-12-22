@@ -1,0 +1,9 @@
+package com.my9yu.charge.facade;
+
+import com.my9yu.common.utils.model.ResultCode;
+
+public interface ChargeTestAccountResult extends ResultCode {
+	int ERROR_JSON_CREATE = 1;
+	int ERROR_JSON_DELETE = 2;
+	int ERROR_OPERATOR_NOT_FAND = 3;
+}

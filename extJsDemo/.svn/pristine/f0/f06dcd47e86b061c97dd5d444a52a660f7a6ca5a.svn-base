@@ -1,0 +1,77 @@
+package com.my9yu.charge.facade;
+
+import static com.my9yu.common.socket.filter.ManagementFilter.*;
+
+import com.my9yu.charge.model.ChargeTarget;
+import com.my9yu.charge.model.OrderInfo;
+import com.my9yu.common.socket.anno.InBody;
+import com.my9yu.common.socket.anno.InSession;
+import com.my9yu.common.socket.anno.SocketCommand;
+import com.my9yu.common.socket.anno.SocketModule;
+import com.my9yu.common.utils.model.Result;
+
+/**
+ * 管理后台给游戏服调用的通讯门面
+ * @author Frank
+ */
+@SocketModule(value = ChargeModule.MODULE, format = 1)
+public interface ChargeFacade {
+
+	// 充值接口
+	
+	/** 按帐号创建订单 */
+	@SocketCommand(ChargeModule.ORDER_BY_ACCOUNT)
+	public Result<OrderInfo> orderByAccount(@InSession(MANAGEMENT) String mis, @InBody("oid") int oid,
+			@InBody("sid") int sid, @InBody("account") String account,
+			@InBody(value = "addition", required = false) String addition);
+
+	/** 按角色创建订单 */
+	@SocketCommand(ChargeModule.ORDER_BY_PLAYER)
+	public Result<OrderInfo> orderByPlayer(@InSession(MANAGEMENT) String mis, @InBody("oid") int oid,
+			@InBody("sid") int sid, @InBody("player") String player,
+			@InBody(value = "addition", required = false) String addition);
+
+	/** 按目标标识创建订单 */
+	@SocketCommand(ChargeModule.ORDER_BY_TARGET)
+	public Result<OrderInfo> orderByTarget(@InSession(MANAGEMENT) String mis, @InBody("oid") int oid,
+			@InBody("sid") int sid,@InBody("target") String target,
+			@InBody(value = "addition", required = false) String addition);
+	
+	/** 按帐号进行充值 */
+	@SocketCommand(ChargeModule.CHARGE_BY_ACCOUNT)
+	public Result<ChargeTarget> chargeByAccount(@InSession(MANAGEMENT) String mis, @InBody("oid") int oid,
+			@InBody("sid") int sid, @InBody("order") String order, @InBody("account") String account,
+			@InBody("money") int money, @InBody("gold") int gold,
+			@InBody(value = "addition", required = false) String addition);
+
+	/** 按角色进行充值 */
+	@SocketCommand(ChargeModule.CHARGE_BY_PLAYER)
+	public Result<ChargeTarget> chargeByPlayer(@InSession(MANAGEMENT) String mis, @InBody("oid") int oid,
+			@InBody("sid") int sid, @InBody("order") String order, @InBody("player") String player,
+			@InBody("money") int money, @InBody("gold") int gold,
+			@InBody(value = "addition", required = false) String addition);
+
+	/** 按目标标识进行充值 */
+	@SocketCommand(ChargeModule.CHARGE_BY_TARGET)
+	public Result<ChargeTarget> chargeByTarget(@InSession(MANAGEMENT) String mis, @InBody("oid") int oid,
+			@InBody("sid") int sid, @InBody("order") String order, @InBody("target") String target,
+			@InBody("money") int money, @InBody("gold") int gold,
+			@InBody(value = "addition", required = false) String addition);
+	
+	// 查询接口
+	
+	/** 查询指定帐号名 */
+	@SocketCommand(ChargeModule.QUERY_BY_ACCOUNT)
+	public Result<ChargeTarget> queryByAccount(@InSession(MANAGEMENT) String mis, @InBody("oid") int oid,
+			@InBody("sid") int sid, @InBody("content") String content);
+
+	/** 查询指定角色名 */
+	@SocketCommand(ChargeModule.QUERY_BY_PLAYER)
+	public Result<ChargeTarget> queryByPlayer(@InSession(MANAGEMENT) String mis, @InBody("oid") int oid,
+			@InBody("sid") int sid, @InBody("content") String content);
+
+	/** 查询指定用户标识 */
+	@SocketCommand(ChargeModule.QUERY_BY_TARGET)
+	public Result<ChargeTarget> queryByTarget(@InSession(MANAGEMENT) String mis, @InBody("oid") int oid,
+			@InBody("sid") int sid, @InBody("content") String content);
+}

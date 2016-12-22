@@ -1,0 +1,13 @@
+package com.my9yu.charge.common.server.repository;
+
+import org.springframework.data.repository.PagingAndSortingRepository;
+
+import com.my9yu.charge.common.server.entity.Operator;
+
+/**
+ * 运营商数据仓库
+ * @author Frank
+ */
+public interface OperatorRepository extends PagingAndSortingRepository<Operator, Integer> {
+
+}

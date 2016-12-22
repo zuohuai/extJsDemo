@@ -1,0 +1,15 @@
+package com.my9yu.charge.common.server.model;
+
+import com.my9yu.common.utils.model.ResultCode;
+
+public interface ChargeErrorCode extends ResultCode {
+	int CREATED = -701; // 已创建
+	int NOT_FIND_OPERATOR = -702;// 没有找到运营商
+	int NOT_FIND_SERVER = -703;// 没有找到服务器
+	int JSON_ERROR = -704;// json序列化出错
+	int ID_ERROR = -705; // id 输入错误
+	int SORTID_ERROR = -706; // 排序ID 重复
+	int CANNOT_DELETE_GAMEINSTANCE_ERROR = -707; // 已存在服务器列表 不能删除 GameInstance
+
+	int NOT_FIND_GAMEINSTANCE = -708; // 不存在 GameInstance
+}

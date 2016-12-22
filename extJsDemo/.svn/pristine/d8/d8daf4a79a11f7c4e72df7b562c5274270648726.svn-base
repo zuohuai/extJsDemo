@@ -1,0 +1,44 @@
+package com.my9yu.charge.facade;
+
+/**
+ * 充值服通讯模块定义
+ * @author Frank
+ */
+public interface ChargeModule {
+
+	/** 当前的模块标识 */
+	byte MODULE = -100;
+
+	/** 活动模块的通信模块定义 */
+	byte[] MODULES = { MODULE };
+
+	// 通讯指令定义
+
+	/** 按帐号名进行充值 */
+	int CHARGE_BY_ACCOUNT = 1;
+
+	/** 按角色名进行充值 */
+	int CHARGE_BY_PLAYER = 2;
+
+	/** 按用户标识进行充值 */
+	int CHARGE_BY_TARGET = 3;
+
+	/** 查询指定帐号名 */
+	int QUERY_BY_ACCOUNT = 4;
+
+	/** 查询指定角色名 */
+	int QUERY_BY_PLAYER = 5;
+
+	/** 查询指定用户标识 */
+	int QUERY_BY_TARGET = 6;
+
+	/** 按帐号名创建充值序号 */
+	int ORDER_BY_ACCOUNT = 7;
+
+	/** 按角色名创建充值序号 */
+	int ORDER_BY_PLAYER = 8;
+
+	/** 按用户标识创建充值序号 */
+	int ORDER_BY_TARGET = 9;
+
+}

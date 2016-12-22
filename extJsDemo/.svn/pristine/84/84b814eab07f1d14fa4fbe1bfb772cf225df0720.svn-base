@@ -1,0 +1,12 @@
+package com.my9yu.charge.common.server.model;
+public class ServerInfo {
+	private String gameInstance;
+
+	public String getGameInstance() {
+		return gameInstance;
+	}
+
+	public void setGameInstance(String gameInstance) {
+		this.gameInstance = gameInstance;
+	}	
+}

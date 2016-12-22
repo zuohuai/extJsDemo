@@ -1,0 +1,48 @@
+package com.my9yu.charge.admin;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.regex.Pattern;
+
+import javax.annotation.PostConstruct;
+
+/**
+ * 管理后台配置对象
+ * @author Frank
+ */
+public class AdminConfig {
+
+	/** 管理后台许可IP配置 */
+	private String allowIp;
+
+	private List<Pattern> patterns = new ArrayList<Pattern>();
+
+	@PostConstruct
+	protected void init() {
+		for (String s : allowIp.split(",")) {
+			String str = s.replace(".", "[.]").replace("*", "[0-9]*");
+			patterns.add(Pattern.compile(str));
+		}
+	}
+
+	/**
+	 * 检查IP是否合法
+	 * @param ip
+	 * @return
+	 */
+	public boolean isAllowIp(String ip) {
+		for (Pattern regex : patterns) {
+			if (regex.matcher(ip).matches()) {
+				return true;
+			}
+		}
+		return false;
+	}
+	
+	// Getter and Setter ...
+
+	public void setAllowIp(String allowIp) {
+		this.allowIp = allowIp;
+	}
+
+}

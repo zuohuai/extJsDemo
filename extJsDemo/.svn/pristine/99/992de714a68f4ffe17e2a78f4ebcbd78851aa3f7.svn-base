@@ -1,0 +1,85 @@
+package com.my9yu.charge.tencent.facade;
+
+/**
+ * 腾讯回调结果码
+ * @author Ramon
+ */
+public enum CallbackCode {
+
+	/** 成功 */
+	SUCCESS(0, "成功"),
+
+	/** 系统繁忙(重试) */
+	BUSY(1, "系统繁忙(重试)"),
+
+	/** token已过期 */
+	TOKEN_TIMEOUT(2, "token已过期"),
+
+	/** token不存在 */
+	TOKEN_NOT_FOUND(3, "token不存在"),
+
+	/** 请求参数错误 */
+	INVAILD_PARAM(4, "请求参数错误"),
+
+	// ---------------
+
+	/** Token已经被消费掉,交易成功钱扣了 */
+	CONSUME_SUCCESS(5, "token已消费,交易成功"),
+
+	/** 用户不存在 */
+	USER_NOT_EXISTS(6, "用户不存在"),
+
+	/** 程序错误 */
+	PROGRAM_ERROR(7, "程序错误"),
+
+	/** 业务执行错误 */
+	BUSINESS_ERROR(8, "业务执行错误"),
+
+	/** token已消费，程序异常发货失败 */
+	CONSUME_FAIL(9, "token已消费，程序异常发货失败"),
+
+	/** 网络异常(重试) */
+	NETWORK_ERROR(10, "网络异常(重试)"),
+
+	/** 没有在服务时间区间内(比如没有在活动时间内) */
+	OUT_OF_SERVICE_TIME(11, "没有在服务时间区间内(比如没有在活动时间内)"),
+
+	/** 条件未满足 */
+	CONDITIONS_NOT_ARRIVE(12, "条件未满足"),
+
+	/** 重复的事务请求(之前有请求过同样的事务并且那个事务成功了，当前的这个事务就需要放弃) */
+	REPEAT_TRANSACTION_SUCCESS(13, "重复的事务请求");
+
+	// ------------------
+	private int code;
+	private String message;
+
+	/**
+	 * 错误码
+	 */
+	public int getCode() {
+		return code;
+	}
+
+	/**
+	 * 错误信息
+	 */
+	public String getMessage() {
+		return message;
+	}
+
+	private CallbackCode(int code, String message) {
+		this.code = code;
+		this.message = message;
+	}
+
+	public static CallbackCode valueOf(int code) {
+		for(CallbackCode e : CallbackCode.values()) {
+			if(e.getCode() == code) {
+				return e;
+			}
+		}
+		return null;
+	}
+
+}

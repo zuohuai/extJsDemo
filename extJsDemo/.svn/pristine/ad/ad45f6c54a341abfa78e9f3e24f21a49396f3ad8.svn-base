@@ -1,0 +1,24 @@
+package com.my9yu.tencent.facade;
+
+import static com.my9yu.common.socket.filter.ManagementFilter.MANAGEMENT;
+
+import com.my9yu.common.socket.anno.InBody;
+import com.my9yu.common.socket.anno.InSession;
+import com.my9yu.common.socket.anno.SocketCommand;
+import com.my9yu.common.socket.anno.SocketModule;
+import com.my9yu.common.utils.model.Result;
+
+/**
+ * 腾讯通讯
+ * @author ChenJia@my9yu.com
+ * @date 2014-4-8
+ */
+@SocketModule(value = ChargeTencentModule.MODULE, format = 1)
+public interface ChargeTencentFacade {
+
+	/** 任务集市发奖 */
+	@SocketCommand(ChargeTencentModule.REWARD_TASKMARKET)
+	public Result<String> rewardTaskmarket(@InSession(MANAGEMENT) String mis, @InBody("oid") int oid,
+			@InBody("sid") int sid, @InBody("openid") String openid, @InBody(value = "contractid") String contractid,
+			@InBody(value = "step") int step);
+}

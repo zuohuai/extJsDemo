@@ -1,0 +1,20 @@
+package com.my9yu.charge.tencent.facade;
+
+import com.my9yu.common.socket.core.Command;
+
+/**
+ * 回调请求指令
+ * @author ramon
+ */
+public interface CallbackCommand {
+
+	/** 支付 TOKEN 回调 */
+	Command PAY_TOKEN = Command.valueOf(CallbackModule.PAY_TOKEN, CallbackModule.MODULES);
+	/** 寄售 TOKEN 回调 */
+	Command EXCHANGE_TOKEN = Command.valueOf(CallbackModule.EXCHANGE_TOKEN, CallbackModule.MODULES);
+	/** 礼包 TOKEN 回调 */
+	Command PRESENT_TOKEN = Command.valueOf(CallbackModule.PRESENT_TOKEN, CallbackModule.MODULES);
+	/** 支付订单状态确认 */
+	Command ORDER_CHECK = Command.valueOf(CallbackModule.ORDER_CHECK, CallbackModule.MODULES);
+
+}

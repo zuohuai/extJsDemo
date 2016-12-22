@@ -1,0 +1,109 @@
+package com.my9yu.charge.model;
+
+import java.util.Date;
+
+import org.codehaus.jackson.map.annotate.JsonSerialize;
+import org.codehaus.jackson.map.annotate.JsonSerialize.Inclusion;
+
+import com.my9yu.charge.entity.Charge;
+import com.my9yu.charge.entity.ChargeState;
+import com.my9yu.charge.facade.ChargeCode;
+
+/**
+ * 充值订单状态信息
+ * @author Frank
+ */
+@JsonSerialize(include = Inclusion.NON_NULL)
+public class ChargeInfo {
+
+	// 基础信息
+	/** 充值订单标识 */
+	private String order;
+	/** 充值记录创建时间 */
+	private Date createTime;
+	/** 充值订单状态 */
+	private ChargeState state;
+
+	// 重试信息
+	/** 下次重试时间 */
+	private Date retryTime;
+	/** 重试次数 */
+	private int retry;
+	/** 最后的充值回应状态码 */
+	private ChargeCode code;
+
+	// 完成信息
+	/** 完成充值时间 */
+	private Date completeTime;
+	
+	// Getter and Setter
+
+	public String getOrder() {
+		return order;
+	}
+
+	public void setOrder(String order) {
+		this.order = order;
+	}
+
+	public Date getCreateTime() {
+		return createTime;
+	}
+
+	public void setCreateTime(Date createTime) {
+		this.createTime = createTime;
+	}
+
+	public ChargeState getState() {
+		return state;
+	}
+
+	public void setState(ChargeState state) {
+		this.state = state;
+	}
+
+	public Date getRetryTime() {
+		return retryTime;
+	}
+
+	public void setRetryTime(Date retryTime) {
+		this.retryTime = retryTime;
+	}
+
+	public int getRetry() {
+		return retry;
+	}
+
+	public void setRetry(int retry) {
+		this.retry = retry;
+	}
+
+	public ChargeCode getCode() {
+		return code;
+	}
+
+	public void setCode(ChargeCode code) {
+		this.code = code;
+	}
+
+	public Date getCompleteTime() {
+		return completeTime;
+	}
+
+	public void setCompleteTime(Date completeTime) {
+		this.completeTime = completeTime;
+	}
+
+	/** 构造方法 */
+	public static ChargeInfo valueOf(Charge charge) {
+		ChargeInfo result = new ChargeInfo();
+		result.order = charge.getOrder();
+		result.createTime = charge.getCreateTime();
+		result.state = charge.getState();
+		result.retryTime = charge.getRetryTime();
+		result.retry = charge.getRetry();
+		result.code = charge.getCode();
+		result.completeTime = charge.getCompleteTime();
+		return result;
+	}
+}

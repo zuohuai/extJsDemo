@@ -1,0 +1,13 @@
+package com.my9yu.charge.common.server.entity;
+
+public enum ServerStatu {
+
+	/** 关闭 ***/
+	CLOSE,
+
+	/** 开启 ***/
+	OPEN,
+
+	/** 未处理 ***/
+	UNTREATED;
+}

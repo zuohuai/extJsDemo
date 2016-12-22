@@ -1,0 +1,56 @@
+package com.my9yu.charge.admin;
+
+import java.util.HashMap;
+import java.util.Map;
+
+import org.junit.After;
+import org.junit.Before;
+import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.test.context.ContextConfiguration;
+import org.springframework.test.context.junit4.SpringJUnit4ClassRunner;
+
+import com.my9yu.charge.common.server.entity.Operator;
+import com.my9yu.charge.common.server.entity.Server;
+import com.my9yu.charge.common.server.service.ServerService;
+
+@RunWith(SpringJUnit4ClassRunner.class)
+@ContextConfiguration(locations = "classpath:/test-context.xml")
+public class OperatorServerControllerTest {
+
+	@Autowired
+	private ServerService operatorService;
+	
+	private String name = "test";
+	
+	@Before
+	public void before() {
+		operatorService.addServer(1, 1, "127.0.0.1", "test", null, System.currentTimeMillis(),  System.currentTimeMillis());
+	}
+	
+	@After
+	public void after() {
+		operatorService.removeServer(1, 1);
+		//operatorService.delete(name);
+	}
+	
+	@Test
+	public void test_get() {
+/*		ResponseEntity<Server> response = controller.get(name, 1);
+		assertThat(response.getStatusCode(), is(HttpStatus.OK));
+		response = controller.get(name, 0);
+		assertThat(response.getStatusCode(), is(HttpStatus.NOT_FOUND));
+		response = controller.get("not-found", 1);
+		assertThat(response.getStatusCode(), is(HttpStatus.NOT_FOUND));*/
+	}
+	
+	@Test
+	public void test_delete() {
+/*		ResponseEntity response = controller.delete("not-found", 1);
+		assertThat(response.getStatusCode(), is(HttpStatus.BAD_REQUEST));
+		response = controller.delete(name, 1);
+		assertThat(response.getStatusCode(), is(HttpStatus.OK));*/
+	}
+	
+}

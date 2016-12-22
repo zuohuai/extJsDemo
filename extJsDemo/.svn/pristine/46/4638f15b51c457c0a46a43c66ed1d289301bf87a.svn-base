@@ -1,0 +1,102 @@
+package com.my9yu.tencent.model;
+
+import java.text.SimpleDateFormat;
+import java.util.Date;
+
+import com.my9yu.tencent.entity.Task;
+
+public class ZoneInfo {
+
+	public enum TaskState {
+		/** 进行中 */
+		GOING,
+		/** 完成 */
+		COMPLETE,
+		/** 已领奖 */
+		REWARDED;
+	}
+
+	/** {@link Task#getId()} */
+	private String id;
+	private int oid;
+	private String zoneid;
+	private int step;
+	private TaskState state;
+	private Date update;
+
+	@Override
+	public String toString() {
+		SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd");
+		return zoneid + "_" + step + "_" + sdf.format(update);
+	}
+
+	public String getZoneid() {
+		return zoneid;
+	}
+
+	public void setZoneid(String zoneid) {
+		this.zoneid = zoneid;
+	}
+
+	public int getOid() {
+		return oid;
+	}
+
+	public void setOid(int oid) {
+		this.oid = oid;
+	}
+
+	public int getStep() {
+		return step;
+	}
+
+	public void setStep(int step) {
+		this.step = step;
+	}
+
+	public TaskState getState() {
+		return state;
+	}
+
+	public void setState(TaskState state) {
+		this.state = state;
+	}
+
+	public String getId() {
+		return id;
+	}
+
+	public void setId(String id) {
+		this.id = id;
+	}
+
+	public Date getUpdate() {
+		return update;
+	}
+
+	public void setUpdate(Date update) {
+		this.update = update;
+	}
+
+	public static ZoneInfo valueOf(int oid, String zoneid, int step, Date update, TaskState state) {
+		ZoneInfo result = new ZoneInfo();
+		result.oid = oid;
+		result.zoneid = zoneid;
+		result.step = step;
+		result.state = state;
+		result.update = update;
+		return result;
+	}
+
+	public static ZoneInfo valueOf(String id, int oid, String zoneid, int step, Date update, TaskState state) {
+		ZoneInfo result = new ZoneInfo();
+		result.id = id;
+		result.oid = oid;
+		result.zoneid = zoneid;
+		result.step = step;
+		result.state = state;
+		result.update = update;
+		return result;
+	}
+
+}

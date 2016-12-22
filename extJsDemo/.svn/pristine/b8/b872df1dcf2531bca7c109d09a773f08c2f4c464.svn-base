@@ -1,0 +1,67 @@
+package com.my9yu.charge.common.server.entity;
+
+import org.springframework.data.annotation.Id;
+import org.springframework.data.mongodb.core.mapping.Document;
+
+/***
+ * 游戏实例
+ **/
+@Document
+public class GameInstance {
+
+	/**
+	 * 地址 = 域名+端口
+	 */
+	@Id
+	private String address;
+
+	/**
+	 * 别名
+	 */
+	private String alias;
+
+	/**
+	 * ip 备注用的
+	 */
+	private String ip;
+
+	/** 服务器状态 */
+	private ServerStatu statu;
+
+	public GameInstance() {
+	}
+
+	// set get
+
+	public String getAddress() {
+		return address;
+	}
+
+	public String getAlias() {
+		return alias;
+	}
+
+	public void setAlias(String alias) {
+		this.alias = alias;
+	}
+
+	public String getIp() {
+		return ip;
+	}
+
+	public void setIp(String ip) {
+		this.ip = ip;
+	}
+
+	public void setAddress(String address) {
+		this.address = address;
+	}
+
+	public ServerStatu getStatu() {
+		return statu;
+	}
+
+	public void setStatu(ServerStatu statu) {
+		this.statu = statu;
+	}
+}

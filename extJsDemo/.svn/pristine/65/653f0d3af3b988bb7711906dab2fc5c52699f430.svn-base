@@ -1,0 +1,548 @@
+package com.my9yu.charge.common.server.service;
+
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
+
+import javax.annotation.PostConstruct;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.mongodb.core.MongoTemplate;
+import org.springframework.data.mongodb.core.query.Criteria;
+import org.springframework.data.mongodb.core.query.Query;
+import org.springframework.stereotype.Service;
+
+import com.my9yu.charge.common.server.entity.GameInstance;
+import com.my9yu.charge.common.server.entity.Operator;
+import com.my9yu.charge.common.server.entity.Server;
+import com.my9yu.charge.common.server.entity.ServerStatu;
+import com.my9yu.charge.common.server.model.GameInstanceServers;
+import com.my9yu.charge.common.server.repository.GameInstanceRepository;
+import com.my9yu.charge.common.server.repository.OperatorRepository;
+import com.my9yu.charge.common.server.repository.ServerRepository;
+
+/**
+ * 服务器信息管理模块的对外服务对象
+ */
+@Service
+public class ServerService {
+	@Autowired
+	private OperatorRepository operatorRepository;
+
+	@Autowired
+	private ServerRepository serverRepository;
+
+	@Autowired
+	private GameInstanceRepository gameInstanceRepository;
+
+	@Autowired
+	private MongoTemplate mongoTemplate;
+
+	private ConcurrentHashMap<Integer, Operator> operators = new ConcurrentHashMap<Integer, Operator>();
+	private ConcurrentHashMap<Integer, ConcurrentHashMap<Integer, Server>> servers = new ConcurrentHashMap<Integer, ConcurrentHashMap<Integer, Server>>();
+	private ConcurrentHashMap<String, GameInstance> gameInstances = new ConcurrentHashMap<String, GameInstance>();
+
+	private final ReentrantReadWriteLock operatorLock = new ReentrantReadWriteLock();
+	private final Lock operatorReadLock = operatorLock.readLock();
+	private final Lock operatorWriteLock = operatorLock.writeLock();
+
+	// @Autowired private EventBus eventBus;
+
+	@PostConstruct
+	protected void init() {
+
+		for (Operator operator : operatorRepository.findAll()) {
+			operators.put(operator.getId(), operator);
+		}
+
+		for (Server server : serverRepository.findAll()) {
+			Integer key = server.getOperator();
+			if (!servers.containsKey(key)) {
+				servers.put(key, new ConcurrentHashMap<Integer, Server>());
+			}
+			ConcurrentHashMap<Integer, Server> serverList = servers.get(key);
+			serverList.put(server.getServer(), server);
+		}
+
+		for (GameInstance gameInstance : gameInstanceRepository.findAll()) {
+			gameInstances.put(gameInstance.getAddress(), gameInstance);
+		}
+	}
+
+	// 运营商 操作
+	/**
+	 * 清空所有运营商实体
+	 */
+	public void clearAll() {
+		Lock lock = operatorLock.writeLock();
+		lock.lock();
+		try {
+			operatorRepository.deleteAll();
+			serverRepository.deleteAll();
+			gameInstanceRepository.deleteAll();
+
+			operators.clear();
+			servers.clear();
+			gameInstances.clear();
+		} finally {
+			lock.unlock();
+		}
+	}
+
+	/**
+	 * 持久化或更新运营商实体
+	 * @param entity
+	 */
+	public void saveOrUpdateOperator(Operator entity) {
+		operatorWriteLock.lock();
+		try {
+			operatorRepository.save(entity);
+			operators.put(entity.getId(), entity);
+			// eventBus.post(OperatorSaveOrUpdate.valueOf(entity.getId()));
+		} finally {
+			operatorWriteLock.unlock();
+		}
+	}
+
+	/**
+	 * 移除运营商实体
+	 * @param id
+	 */
+	public void deleteOperator(int id) {
+		operatorWriteLock.lock();
+		try {
+			operatorRepository.delete(id);
+			operators.remove(id);
+			removeCacheServer(id);
+			// eventBus.post(OperatorDelete.valueOf(id));
+		} finally {
+			operatorWriteLock.unlock();
+		}
+	}
+
+	/**
+	 * 获取运营商实体
+	 * @param id 标识
+	 * @return
+	 */
+	public Operator getOperator(int id) {
+		operatorReadLock.lock();
+		try {
+			return operators.get(id);
+		} finally {
+			operatorReadLock.unlock();
+		}
+	}
+
+	/**
+	 * 获取全部权限数据
+	 * @return
+	 */
+	public final Set<Operator> allOperator() {
+		operatorReadLock.lock();
+		try {
+			return new HashSet<Operator>(operators.values());
+		} finally {
+			operatorReadLock.unlock();
+		}
+	}
+
+	// 运营商 操作 end
+
+	// 服务器 操作
+	/**
+	 * 删除服务器
+	 * @return
+	 */
+	public void removeServer(int operatorId, int serverId) {
+		operatorWriteLock.lock();
+		try {
+			removeCacheServer(operatorId, serverId);
+		} finally {
+			operatorWriteLock.unlock();
+		}
+	}
+
+	/**
+	 * 添加服务器
+	 * @return
+	 */
+	public void addServer(int operatorId, int serverId, String address, String name, String informations,
+			long createTime, Long startTime) {
+		operatorWriteLock.lock();
+		try {
+
+			Server server = new Server(operatorId, serverId, address, name, informations, createTime, startTime);
+			addCacheServer(server);
+		} finally {
+			operatorWriteLock.unlock();
+		}
+	}
+
+	/**
+	 * 内部方法
+	 **/
+	private void addCacheServer(Server server) {
+
+		Integer key = server.getOperator();
+		if (!servers.containsKey(key)) {
+			servers.put(key, new ConcurrentHashMap<Integer, Server>());
+		}
+		ConcurrentHashMap<Integer, Server> serverList = servers.get(key);
+		serverList.put(server.getServer(), server);
+
+		serverRepository.save(server);
+	}
+
+	private void removeCacheServer(int operatorId, int serverId) {
+
+		if (servers.containsKey(operatorId)) {
+			servers.get(operatorId).remove(serverId);
+		}
+		String key = Server.toId(operatorId, serverId);
+		serverRepository.delete(key);
+	}
+
+	private void removeCacheServer(int operatorId) {
+
+		servers.remove(operatorId);
+		Criteria criteria = new Criteria();
+
+		criteria.and("operator").is(operatorId);
+
+		mongoTemplate.remove(new Query(criteria), Server.class);
+	}
+
+	public synchronized boolean removeCacheGameInstance(String key) {
+		Collection<Server> changeData = allServers();
+		for (Server server : changeData) {
+			if (key.contains(server.getAddress())) {
+				return false;
+			}
+		}
+		gameInstances.remove(key);
+		gameInstanceRepository.delete(key);
+		return true;
+	}
+	
+	public static enum SearchGameInstanceType {
+		// 全部
+		ALL,
+		// 排除已使用
+		EXCLUDE,
+		// 已使用
+		USE
+	}
+	/**
+	 * 查询游戏实例
+	 * @param operator 是否按运营商查，null 为全平台
+	 * @param type {@link SearchGameInstanceType}
+	 */
+	public final Collection<GameInstance> getCacheGameInstance(Integer operator, SearchGameInstanceType type) {
+		if (operator == null)
+			return gameInstances.values();
+
+		
+		if (SearchGameInstanceType.ALL.equals(type)){
+			return gameInstances.values();
+		}
+		
+		final Collection<GameInstance> result = new ArrayList<GameInstance>();
+
+		Set<String> addressList = new HashSet<String>();
+		Collection<Server> servers = allServers(operator, true);
+		for (Server server : servers) {
+			addressList.add(server.getAddress());
+		}
+		for (String address : addressList) {
+			GameInstance data = gameInstances.get(address);
+
+			// 排除
+			if (SearchGameInstanceType.EXCLUDE.equals(type)) {
+				if (data == null)
+					result.add(data);
+			} else if (SearchGameInstanceType.USE.equals(type)) {
+				if (data != null)
+					result.add(data);
+			}
+		}
+
+		return result;
+	}
+	
+	public GameInstanceServers getGameInstanceServers(String address) {
+		final Collection<Server> servers = allServers();
+		GameInstanceServers result = new GameInstanceServers();
+		for (Server server : servers) {
+			if (address.equals(server.getAddress())) {
+
+				String name = getOperator(server.getOperator()).getNick();
+
+				result.putValue(name, server.getServer());
+			}
+		}
+
+		return result;
+	}
+	
+
+	public boolean checkCacheGameInstance(String address) {
+		return gameInstances.containsKey(address);
+	}
+
+	public synchronized void addCacheGameInstance(GameInstance gameInstance) {
+		gameInstances.put(gameInstance.getAddress(), gameInstance);
+		gameInstanceRepository.save(gameInstance);
+	}
+
+	public GameInstance findGameInstance(String address) {
+
+		return gameInstances.get(address);
+	}
+
+	/**
+	 * 所有平台服务器
+	 **/
+	private Collection<Server> allServers() {
+		Collection<Server> result = new ArrayList<Server>();
+		operatorReadLock.lock();
+		try {
+			for (ConcurrentHashMap<Integer, Server> data : servers.values()) {
+				result.addAll(data.values());
+			}
+		} finally {
+			operatorReadLock.unlock();
+		}
+
+		return result;
+	}
+
+	/**
+	 * 按平台查询所有服务器
+	 * @param operatorId 运营商标识
+	 * @param isAll false 过滤 服务器重复地址 true 不过滤
+	 **/
+	public Collection<Server> allServers(int operatorId, boolean isAll) {
+		Collection<Server> result = new ArrayList<Server>();
+
+		operatorReadLock.lock();
+		try {
+			if (!servers.containsKey(operatorId)) {
+				return result;
+			}
+			Collection<Server> data = servers.get(operatorId).values();
+			if (isAll) {
+				result.addAll(data);
+			} else {
+				Map<String, Server> tmpList = new HashMap<String, Server>();
+				for (Server tmp : data) {
+					String key = tmp.getAddress();
+					if (!tmpList.containsKey(key)) {
+						tmpList.put(key, tmp);
+					} else {
+
+						Server check = tmpList.get(key);
+						if (check.getServer() < tmp.getServer()) {
+							tmpList.put(key, tmp);
+						}
+					}
+				}
+				result.addAll(tmpList.values());
+			}
+		} finally {
+			operatorReadLock.unlock();
+		}
+
+		return result;
+	}
+
+	public Collection<Server> findServers(int operatorId, String address) {
+		Collection<Server> result = new ArrayList<Server>();
+		operatorReadLock.lock();
+		try {
+			if (!servers.containsKey(operatorId)) {
+				return result;
+			}
+
+			for (Server tmp : servers.get(operatorId).values()) {
+				if (address.equals(tmp.getAddress())) {
+					result.add(tmp);
+				}
+			}
+
+		} finally {
+			operatorReadLock.unlock();
+		}
+		return result;
+	}
+
+	public Server findServer(int operatorId, int serverId) {
+		Server result = null;
+		operatorReadLock.lock();
+		try {
+			if (!servers.containsKey(operatorId)) {
+				return result;
+			}
+			result = servers.get(operatorId).get(serverId);
+		} finally {
+			operatorReadLock.unlock();
+		}
+		return result;
+	}
+
+	/**
+	 * @param operatorId 运营商标识
+	 * @param serverId 服务器标识 return 返回合并的服务器IDS
+	 **/
+	public Set<Integer> getMergeIds(int operatorId, int serverId) {
+		Set<Integer> result = new HashSet<Integer>();
+
+		operatorReadLock.lock();
+		try {
+			Server server = findServer(operatorId, serverId);
+
+			if (server == null) {
+				return result;
+			}
+
+			Collection<Server> data = allServers(operatorId, true);
+
+			for (Server tmp : data) {
+				if (server.getAddress().equals(tmp.getAddress())) {
+					result.add(tmp.getServer());
+				}
+			}
+
+		} finally {
+			operatorReadLock.unlock();
+		}
+
+		return result;
+	}
+
+	/**
+	 * 合并服务器
+	 * @param newAddress 合并服新的地址 标识
+	 * @param mergeAddress 要合并服的集体 标识
+	 * @return
+	 */
+	public void mergeServer(String newAddress, Set<String> mergeAddress) {
+		operatorWriteLock.lock();
+
+		try {
+			Collection<Server> changeData = allServers();
+			for (Server server : changeData) {
+				if (mergeAddress.contains(server.getAddress())) {
+					server.setAddress(newAddress);
+					serverRepository.save(server);
+				}
+			}
+			for (String address : mergeAddress) {
+				removeCacheGameInstance(address);
+			}
+		} finally {
+			operatorWriteLock.unlock();
+		}
+
+	}
+
+	public boolean setServerStartTime(int operatorId, int serverId, Long time) {
+
+		operatorWriteLock.lock();
+		try {
+			Server server = findServer(operatorId, serverId);
+			if (server == null) {
+				return false;
+			}
+			server.setStartTime(time);
+			addCacheServer(server);
+			return true;
+		} finally {
+			operatorWriteLock.unlock();
+		}
+	}
+
+	public Long getServerStartTime(int operatorId, int serverId) {
+
+		Server server = findServer(operatorId, serverId);
+		if (server == null) {
+			return null;
+		}
+
+		return server.getStartTime();
+	}
+
+	public boolean changeServerStatu(int operatorId, int serverId, ServerStatu statu) {
+		Server server = findServer(operatorId, serverId);
+		if (server == null) {
+			return false;
+		}
+
+		GameInstance gameInstance = findGameInstance(server.getAddress());
+
+		if (gameInstance == null) {
+			return false;
+		}
+
+		gameInstance.setStatu(statu);
+		gameInstanceRepository.save(gameInstance);
+		return true;
+	}
+
+	// 测试用户操作
+	public boolean removeTestAccount(int operatorId, Set<String> accounts) {
+		operatorWriteLock.lock();
+		Operator operator;
+		boolean flag = false;
+
+		try {
+			operator = getOperator(operatorId);
+			Set<String> testAccounts = operator.getTestAccounts();
+			if (testAccounts == null) {
+				return true;
+			}
+			flag = true;
+			testAccounts.removeAll(accounts);
+
+		} finally {
+			operatorWriteLock.unlock();
+		}
+
+		if (flag)
+			saveOrUpdateOperator(operator);
+		return flag;
+	}
+
+	public boolean addTestAccount(int operatorId, Set<String> accounts) {
+		operatorWriteLock.lock();
+		Operator operator;
+		boolean flag = false;
+
+		try {
+			operator = getOperator(operatorId);
+			Set<String> testAccounts = operator.getTestAccounts();
+			if (testAccounts == null) {
+				testAccounts = new HashSet<String>();
+				operator.setTestAccounts(testAccounts);
+			}
+			flag = true;
+			testAccounts.addAll(accounts);
+
+		} finally {
+			operatorWriteLock.unlock();
+		}
+
+		if (flag)
+			saveOrUpdateOperator(operator);
+		return flag;
+	}
+
+	// 测试用户结束
+
+}

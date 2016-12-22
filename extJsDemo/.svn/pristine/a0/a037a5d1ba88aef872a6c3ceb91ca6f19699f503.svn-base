@@ -1,0 +1,55 @@
+package com.my9yu.charge.admin;
+
+import javax.servlet.ServletRequest;
+
+import org.apache.commons.lang3.StringUtils;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.stereotype.Controller;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestMethod;
+import org.springframework.web.bind.annotation.RequestParam;
+
+import com.my9yu.charge.common.server.entity.Operator;
+import com.my9yu.charge.common.server.entity.Server;
+import com.my9yu.charge.facade.ChargeCode;
+import com.my9yu.charge.model.OrderInfo;
+import com.my9yu.charge.service.OrderService;
+import com.my9yu.charge.ws.pay.AbstractPayController;
+import com.my9yu.common.utils.model.Result;
+
+/**
+ * 按目标标识充值接口
+ * @author Frank
+ */
+@Controller
+@RequestMapping("order-test/target")
+public class OrderByTargetController extends AbstractPayController {
+
+	@Autowired
+	private OrderService orderService;
+
+	@RequestMapping(value = "{oid}/{sid}", method = { RequestMethod.GET, RequestMethod.POST })
+	public ResponseEntity<Result<Object>> charge(@PathVariable int oid, @PathVariable int sid,
+			@RequestParam String content, @RequestParam(required = false) String addition, ServletRequest request) {
+		if (StringUtils.isEmpty(addition)) {
+			addition = null;
+		}
+		// 安全检查
+		Operator operator = getOperator(oid);
+		Server server = getServer(operator, sid);
+		String ip = request.getRemoteAddr();
+		chkRemoteAddr(operator, ip);
+		// 充值与返回
+		OrderInfo result = orderService.orderByTarget(operator, server, sid, content, addition);
+		ChargeCode code = result.getCode();
+		if (code.isSuccess()) {
+			return new ResponseEntity<Result<Object>>(new Result<Object>(code.getValue(), result), HttpStatus.OK);
+		}
+		return new ResponseEntity<Result<Object>>(new Result<Object>(code.getValue(), code.getDescription()),
+				HttpStatus.OK);
+	}
+
+}

@@ -1,0 +1,11 @@
+# ---- 腾讯配置 -----
+# 正式环境下使用域名：openapi.tencentyun.com。测试环境下使用IP：119.147.19.43
+tencent.server = 119.147.19.43
+# 腾讯的运营商标识
+tencent.opeartor = 1
+# 应用的腾讯APPID
+tencent.appid = 33758
+# 应用的腾讯APPKEY
+tencent.appkey = 33758
+# 是否允许调用腾讯接口
+tencent.enable = false

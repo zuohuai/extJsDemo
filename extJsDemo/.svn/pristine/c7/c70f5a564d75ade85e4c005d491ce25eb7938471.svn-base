@@ -1,0 +1,29 @@
+package com.my9yu.charge.tencent.facade;
+
+/**
+ * 腾讯回调通讯模块定义
+ * @author Ramon
+ */
+public interface CallbackModule {
+
+	/** 当前的模块标识 */
+	byte MODULE = -99;
+
+	/** 活动模块的通信模块定义 */
+	byte[] MODULES = { MODULE };
+
+	// 通讯指令定义
+
+	/** 支付 TOKEN 回调 */
+	int PAY_TOKEN = 1;
+
+	/** 寄售 TOKEN 回调 */
+	int EXCHANGE_TOKEN = 2;
+
+	/** 礼包 TOKEN 回调 */
+	int PRESENT_TOKEN = 3;
+	
+	/** 支付订单状态确认 */
+	int ORDER_CHECK = 4;
+
+}

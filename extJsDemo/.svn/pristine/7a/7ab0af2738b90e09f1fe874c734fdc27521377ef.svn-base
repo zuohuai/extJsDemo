@@ -1,0 +1,75 @@
+package com.my9yu.charge.admin;
+
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Controller;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestMethod;
+import org.springframework.web.bind.annotation.ResponseBody;
+
+import com.my9yu.charge.common.server.entity.Operator;
+import com.my9yu.charge.common.server.entity.Server;
+import com.my9yu.charge.common.server.service.ServerService;
+
+@Controller
+public class ServersController {
+
+	@Autowired
+	private ServerService operatorService;
+	final static Integer pageSize = 30;
+
+	static final class ComparatorServer implements Comparator<Server> {
+
+		public int compare(Server a, Server b) {
+			return a.getServer() > b.getServer() ? 1 : 0;
+		}
+	}
+
+	@SuppressWarnings("rawtypes")
+	@RequestMapping(value = "{operatorId}/{page}/server-list", method = RequestMethod.GET)
+	public @ResponseBody
+	Map listServersByOperator(@PathVariable Integer page, @PathVariable int operatorId) {
+		Map<String, Object> map = new HashMap<String, Object>();
+		List<Server> list = new ArrayList<Server>();
+		Operator operator = operatorService.getOperator(operatorId);
+		if (operator == null) {
+			map.put("count", 0);
+			map.put("data", list);
+			map.put("showPageCount", 0);
+			map.put("page", 1);
+			map.put("limit", pageSize);
+			return map;
+		}
+
+		list.addAll(operatorService.allServers(operatorId, true));
+
+		if (!list.isEmpty())
+			Collections.sort(list, new ComparatorServer());
+		if (page > list.size())
+			page = 1;
+		Integer start = (page - 1) < 0 ? 0 : page - 1;
+		start *= pageSize;
+		Integer end = (start + pageSize) > list.size() ? list.size() : (start + pageSize);
+
+		List<Server> data = new ArrayList<Server>();
+		for (; start < end; start++) {
+			data.add(list.get(start));
+		}
+
+		map.put("count", list.size());
+		map.put("data", data);
+		map.put("showPageCount", data.size());
+		map.put("page", page);
+		map.put("limit", pageSize);
+		map.put("oid", operatorId);
+
+		return map;
+	}
+}

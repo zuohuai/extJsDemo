@@ -1,0 +1,16 @@
+package com.my9yu.charge.ws.query;
+
+public class QueryCode {
+	/** 0-查询成功 */
+	public static final int QUERY_SUCC = 0;
+	/** -1 - 查询失败 */
+	public static final int QUERY_ERROR = -1;
+	/** -2 - 运营商不存在 */
+	public static final int OPERATOR_ERROR = -2;
+	/** -3 - 服务器不存在 */
+	public static final int SERVER_ERROR = -3;
+	/** -4 - 用户不存在 */
+	public static final int PLAYER_NOTFOUND = -4;
+	/** -5 - 链接游戏服失败 */
+	public static final int NETWORK_ERROR = -5;
+}

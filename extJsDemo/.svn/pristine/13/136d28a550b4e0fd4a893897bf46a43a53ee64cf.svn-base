@@ -1,0 +1,41 @@
+package com.my9yu.charge.service;
+
+import org.junit.Before;
+import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.test.context.ContextConfiguration;
+import org.springframework.test.context.junit4.SpringJUnit4ClassRunner;
+
+import com.my9yu.charge.common.server.entity.Operator;
+import com.my9yu.charge.common.server.entity.Server;
+import com.my9yu.charge.common.server.service.ServerService;
+import com.my9yu.charge.facade.ChargeCode;
+
+@RunWith(SpringJUnit4ClassRunner.class)
+@ContextConfiguration(locations = "classpath:/test-context.xml")
+public class ChargeServiceTest {
+
+	@Autowired
+	private ServerService operatorService;
+	@Autowired
+	private ChargeService chargeService;
+	
+	@Before
+	public void before() {
+		operatorService.addServer(1, 1, "127.0.0.1", "test", null, System.currentTimeMillis(),  System.currentTimeMillis());
+	}
+	
+	@Test
+	public void test() {
+		Operator operator = operatorService.getOperator(1);
+		Server server=operatorService.findServer(1, 1);
+
+		ChargeCode code = chargeService.chargeByAccount(operator, server, 1, "order", "account", 1, 1,"aaa", 0,  true);
+		System.out.println(code);
+//		Assert.assertThat(code, CoreMatchers.is(ChargeCode.SOCKET_ERROR));
+		while (true) {
+			Thread.yield();
+		}
+	}
+}

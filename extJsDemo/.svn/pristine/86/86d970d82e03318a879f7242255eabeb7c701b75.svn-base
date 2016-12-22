@@ -1,0 +1,9 @@
+package com.my9yu.charge.common.server.repository;
+
+import org.springframework.data.repository.PagingAndSortingRepository;
+
+import com.my9yu.charge.common.server.entity.GameInstance;
+
+public interface GameInstanceRepository extends PagingAndSortingRepository<GameInstance, String> {
+
+}

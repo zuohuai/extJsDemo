@@ -1,0 +1,21 @@
+package com.my9yu.tencent.facade;
+
+/**
+ * 腾讯模块定义
+ * @author ChenJia@my9yu.com
+ * @date 2014-4-8
+ */
+public interface ChargeTencentModule {
+	
+	/** 当前的模块标识 */
+	byte MODULE = -98;
+
+	/** 腾讯模块的通信模块定义 */
+	byte[] MODULES = { MODULE };
+
+	// 通讯指令定义
+
+	/** 任务集市发奖 */
+	int REWARD_TASKMARKET = 1;
+
+}

@@ -1,0 +1,27 @@
+package com.my9yu.charge.utils;
+
+import java.util.Enumeration;
+import java.util.HashMap;
+import java.util.Map;
+
+import javax.servlet.http.HttpServletRequest;
+
+public class HttpHelper {
+
+	/**
+	 * 获取HTTP请求参数
+	 * @param request
+	 * @return
+	 */
+	public static Map<String, String> getRequestParams(HttpServletRequest request) {
+		Map<String, String> params = new HashMap<String, String>();
+		@SuppressWarnings("unchecked")
+		Enumeration<String> names = request.getParameterNames();
+		while (names.hasMoreElements()) {
+			String key = names.nextElement();
+			params.put(key, (String) request.getParameter(key));
+		}
+		return params;
+	}
+
+}

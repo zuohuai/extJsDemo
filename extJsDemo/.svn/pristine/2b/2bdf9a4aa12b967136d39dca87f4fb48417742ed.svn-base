@@ -1,0 +1,56 @@
+package com.my9yu.charge.model;
+
+
+/**
+ * 充值重试对象
+ * @author Frank
+ */
+public class RetryCharge {
+
+	/** 运营商标识 */
+	private int oid;
+	/** 服务器标识 */
+	private int sid;
+	/** 充值记录 */
+	private String order;
+
+	public int getOid() {
+		return oid;
+	}
+
+	public void setOid(int oid) {
+		this.oid = oid;
+	}
+
+	public int getSid() {
+		return sid;
+	}
+
+	public void setSid(int sid) {
+		this.sid = sid;
+	}
+
+	public String getOrder() {
+		return order;
+	}
+
+	public void setOrder(String order) {
+		this.order = order;
+	}
+	
+	@Override
+	public String toString() {
+		return "RetryCharge [" + oid + ":" + sid + ":" + order + "]";
+	}
+
+	// Static Method ...
+
+	/** 构造方法 */
+	public static RetryCharge valueOf(int oid, int sid, String order) {
+		RetryCharge result = new RetryCharge();
+		result.oid = oid;
+		result.sid = sid;
+		result.order = order;
+		return result;
+	}
+}

@@ -1,0 +1,37 @@
+package com.my9yu.charge.ws.query;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.stereotype.Controller;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestMethod;
+import org.springframework.web.bind.annotation.RequestParam;
+
+import com.my9yu.charge.entity.Charge;
+import com.my9yu.charge.model.ChargeInfo;
+import com.my9yu.charge.repository.ChargeRepository;
+
+/**
+ * 查询充值订单状态
+ * @author Frank
+ */
+@Controller
+@RequestMapping("query/charge")
+public class ChargeController {
+	
+	@Autowired
+	private ChargeRepository chargeRepository;
+
+	/** 获取充值订单信息 */
+	@RequestMapping(value = "{oid}/{sid}", method = RequestMethod.GET)
+	public ResponseEntity<ChargeInfo> get(@PathVariable int oid, @PathVariable int sid, @RequestParam String order) {
+		Charge entity = chargeRepository.get(oid, sid, order);
+		if (entity == null) {
+			return new ResponseEntity<ChargeInfo>(HttpStatus.NOT_FOUND);
+		}
+		return new ResponseEntity<ChargeInfo>(ChargeInfo.valueOf(entity), HttpStatus.OK);
+	}
+
+}

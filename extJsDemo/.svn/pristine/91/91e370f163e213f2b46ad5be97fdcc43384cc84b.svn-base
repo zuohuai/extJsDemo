@@ -1,0 +1,15 @@
+package com.my9yu.tencent.facade;
+
+import com.my9yu.common.socket.core.Command;
+
+/**
+ * 腾讯指令
+ * @author ChenJia@my9yu.com
+ * @date 2014-4-8
+ */
+public interface ChargeTencentCommand {
+	
+	/** 任务集市发奖 */
+	Command REWARD_TASKMARKET = Command.valueOf(ChargeTencentModule.REWARD_TASKMARKET, ChargeTencentModule.MODULES);
+
+}

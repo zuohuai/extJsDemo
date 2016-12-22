@@ -1,0 +1,188 @@
+package com.my9yu.charge.tencent;
+
+import java.util.HashMap;
+import java.util.Map;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import com.my9yu.common.utils.json.JsonUtils;
+import com.qq.open.OpensnsException;
+import com.qq.open.SnsSigCheck;
+
+/**
+ * 腾讯配置项
+ * @author ramon
+ */
+public class TencentConfig {
+
+	private static final Logger logger = LoggerFactory.getLogger(TencentConfig.class);
+
+	/** 腾讯API服务器地址 */
+	private String server;
+	/** 腾讯的运营商标识 */
+	private int operator;
+	/** 应用的腾讯APPID */
+	private String appid;
+	/** 应用的腾讯APPKEY */
+	private String appkey;
+	/** 是否允许调用腾讯接口 */
+	private boolean enable;
+	/** 任务集市地址 */
+	private String taskMarketUrl;
+	/** 任务集市是否开启 */
+	private boolean taskMarketEnable;
+
+	public String getServer() {
+		return server;
+	}
+
+	public void setServer(String server) {
+		this.server = server;
+	}
+
+	public int getOperator() {
+		return operator;
+	}
+
+	public void setOperator(int operator) {
+		this.operator = operator;
+	}
+
+	public String getAppid() {
+		return appid;
+	}
+
+	public void setAppid(String appid) {
+		this.appid = appid;
+	}
+
+	public String getAppkey() {
+		return appkey;
+	}
+
+	public void setAppkey(String appkey) {
+		this.appkey = appkey;
+	}
+
+	public boolean isEnable() {
+		return enable;
+	}
+
+	public void setEnable(boolean enable) {
+		this.enable = enable;
+	}
+
+	public boolean isTaskMarketEnable() {
+		return taskMarketEnable;
+	}
+
+	public void setTaskMarketEnable(boolean taskMarketEnable) {
+		this.taskMarketEnable = taskMarketEnable;
+	}
+
+	public String getTaskMarketUrl() {
+		return taskMarketUrl;
+	}
+	
+	public void setTaskMarketUrl(String taskMarketUrl) {
+		this.taskMarketUrl = taskMarketUrl;
+	}
+
+	// -------
+
+
+	/** 
+	 * 获取购买物品信息 
+	 * <pre>
+	 * ID*price*num
+	 * ID*num
+	 * </pre>
+	 * */
+	public Map<String, Integer> getItemsMap(String payitem) {
+		Map<String, Integer> result = new HashMap<String, Integer>();
+		String[] array = payitem.split(";");
+		for (String s : array) {
+			String[] ss = s.split("[*]");
+			result.put(ss[0], Integer.valueOf(ss[ss.length - 1]));
+		}
+		return result;
+	}
+
+	/** 检查是否有效的签名信息 */
+	public boolean isValidSign(String method, String url_path, Map<String, String> params, String sign) {
+		String makeSig = makeSign(method, url_path, params);
+		if (makeSig.equals(sign)) {
+			return true;
+		}
+		if (logger.isWarnEnabled()) {
+			logger.warn("TAR:{} -> SIG:{}", makeSig, sign);
+		}
+		return false;
+	}
+
+	/** 生成签名信息 */
+	public String makeSign(String method, String url_path, Map<String, String> params) {
+		Map<String, String> sp = new HashMap<String, String>(params);
+		String secret = getAppkey() + "&";
+		try {
+			sp.remove("sig");
+			return SnsSigCheck.makeSig(method, url_path, sp, secret);
+		} catch (OpensnsException e) {
+			logger.error("签名错误", e);
+			return "签名错误";
+		}
+	}
+
+	/** 检查是否有效的签名信息 */
+	public boolean isValidCallbackSign(String method, String url_path, Map<String, String> params, String sign) {
+		String makeSig = makeCallbackSign(method, url_path, params);
+		if (makeSig.equals(sign)) {
+			return true;
+		}
+		if (logger.isWarnEnabled()) {
+		}
+		logger.error("TAR:{} -> SIG:{}", makeSig, sign);
+		return false;
+	}
+
+	/** 生成回调签名信息 */
+	public String makeCallbackSign(String method, String url_path, Map<String, String> params) {
+		Map<String, String> sp = new HashMap<String, String>(params);
+		sp.remove("sig");
+		String billno = sp.get("billno");
+		if (billno != null) {
+			billno = billno.replace("_", "%5F");
+			billno = billno.replace("-", "%2D");
+			sp.put("billno", billno);
+		}
+		String payitem = sp.get("payitem");
+		if (payitem != null) {
+			payitem = payitem.replace(".", "%2E");
+			payitem = payitem.replace("-", "%2D");
+			sp.put("payitem", payitem);
+		}
+		String cmd = sp.get("cmd");
+		if(cmd != null) {
+			cmd = cmd.replace("_", "%5F");
+			cmd = cmd.replace("-", "%2D");
+			sp.put("cmd", cmd);
+		}
+		return makeSign(method, url_path, sp);
+	}
+
+	public static void main(String[] args) {
+		TencentConfig c = new TencentConfig();
+		c.appkey = "W4FGQKm2GC6sosTs";
+		String json = "{\"pubacct_payamt_coins\":\"\",\"amt\":\"40\",\"providetype\":\"0\",\"ts\":\"1388246946\",\"payitem\":\"MALL001*4*1\",\"token\":\"760F2AF2245559264F429EF0715C59FC22718\",\"zoneid\":\"0\",\"appid\":\"1101123723\",\"openid\":\"0278FEDB387490794CF2BFCB6D2C4004\",\"payamt_coins\":\"0\",\"billno\":\"-APPDJSX16859-20131229-0009067025\",\"version\":\"v3\",\"sig\":\"ymRw2gmrYZnqJuh3XTnh9AWx9Ss=\"}";
+		Map<String, String> params = JsonUtils.string2Map(json, String.class, String.class);
+		System.out.println(params);
+		String sig = params.get("sig");
+		System.out.println(sig);
+		String sign = c.makeCallbackSign("get", "/tencent/callback/pay", params);
+		System.out.println(sign);
+		System.out.println(c.isValidCallbackSign("get", "/tencent/callback/pay", params, sig));
+
+	}
+
+}

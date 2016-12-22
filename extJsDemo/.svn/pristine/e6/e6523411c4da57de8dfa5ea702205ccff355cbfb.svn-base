@@ -1,0 +1,9 @@
+package com.my9yu.charge.common.server.repository;
+
+import org.springframework.data.repository.PagingAndSortingRepository;
+
+import com.my9yu.charge.common.server.entity.Server;
+
+public interface ServerRepository extends PagingAndSortingRepository<Server, String> {
+
+}

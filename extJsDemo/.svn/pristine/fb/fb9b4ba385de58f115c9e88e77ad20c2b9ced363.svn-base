@@ -1,0 +1,80 @@
+package com.my9yu.tencent.model;
+
+/**
+ * 任务集市返回结构 <br>
+ * 标准返回码如下： <br>
+ * 0: 步骤已完成 或 奖励发放成功 <br>
+ * 1: 用户尚未在应用内创建角色 <br>
+ * 2：用户尚未完成本步骤 <br>
+ * 3：该步骤奖励已发放过 <br>
+ * 100: token已过期 <br>
+ * 101: token不存在 <br>
+ * 102: 奖励发放失败 <br>
+ * 103: 请求参数错误<br>
+ * 201: 发货通信异常
+ * 202: 任务配置不存在
+ * 203: 完成任务失败
+ * 开发者自定义返回码务必在200-10000之间。返回码必须严格遵守规范，若不遵守，将出现外网故障。
+ */
+public class TaskResult {
+
+	/** 返回码。需要为“整数”类型 */
+	private int ret;
+	/** 错误信息。编码格式：utf8 */
+	private String msg;
+	/** 应用给玩家在哪个区/服的角色发放奖励。为英文字符串，不可包含中文。用于平台记录，不具备实际功能 */
+	private String zoneid;
+
+	public int getRet() {
+		return ret;
+	}
+
+	public void setRet(int ret) {
+		this.ret = ret;
+	}
+
+	public String getMsg() {
+		return msg;
+	}
+
+	public void setMsg(String msg) {
+		this.msg = msg;
+	}
+
+	public String getZoneid() {
+		return zoneid;
+	}
+
+	public void setZoneid(String zoneid) {
+		this.zoneid = zoneid;
+	}
+
+	/**
+	 * 成功返回
+	 * @param zoneid
+	 * @return
+	 */
+	public static TaskResult sucess(String zoneid) {
+		TaskResult result = new TaskResult();
+		result.ret = 0;
+		result.msg = "OK";
+		result.zoneid = zoneid;
+		return result;
+	}
+
+	/**
+	 * 失败返回
+	 * @param ret 开发者自定义返回码务必在200-10000之间
+	 * @param msg
+	 * @param zoneid 必须带有zoneid，如果查不到用户zoneid，该字段返回空字符串，否则系统会报错
+	 * @return
+	 */
+	public static TaskResult valueOf(int ret, String msg, String zoneid) {
+		TaskResult result = new TaskResult();
+		result.ret = ret;
+		result.msg = msg;
+		result.zoneid = zoneid;
+		return result;
+	}
+
+}

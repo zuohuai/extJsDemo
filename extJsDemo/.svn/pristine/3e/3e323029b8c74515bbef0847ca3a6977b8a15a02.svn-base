@@ -1,0 +1,4 @@
+package com.my9yu.charge.common.server.model;
+
+public class OperatorInfo {
+}

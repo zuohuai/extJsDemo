@@ -1,0 +1,138 @@
+package com.my9yu.charge.service;
+
+import java.util.HashMap;
+import java.util.Map;
+
+import org.apache.mina.core.RuntimeIoException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+
+import com.my9yu.charge.common.server.entity.Operator;
+import com.my9yu.charge.common.server.entity.Server;
+import com.my9yu.charge.entity.ChargeType;
+import com.my9yu.charge.facade.ChargeCode;
+import com.my9yu.charge.facade.ChargeCommand;
+import com.my9yu.charge.model.OrderInfo;
+import com.my9yu.common.socket.client.Client;
+import com.my9yu.common.socket.client.ClientFactory;
+import com.my9yu.common.socket.core.Command;
+import com.my9yu.common.socket.core.Request;
+import com.my9yu.common.socket.core.Response;
+import com.my9yu.common.socket.exception.SocketException;
+import com.my9yu.common.utils.model.Result;
+
+@Service
+public class OrderService {
+
+	private static final Logger logger = LoggerFactory.getLogger(OrderService.class);
+
+	@Autowired
+	private ClientFactory clientFactory;
+
+	/** 按帐号进行充值 */
+	public OrderInfo orderByAccount(Operator operator, Server server, Integer sid, String account, String addition) {
+		// 检查是否重复订单
+		return doOrder(operator.getId(), sid, ChargeType.ACCOUNT, account, operator, server, addition);
+	}
+
+	/** 按角色名进行充值 */
+	public OrderInfo orderByPlayer(Operator operator, Server server, Integer sid, String player, String addition) {
+		return doOrder(operator.getId(), sid, ChargeType.PLAYER, player, operator, server, addition);
+	}
+
+	/** 按目标标识进行充值 */
+	public OrderInfo orderByTarget(Operator operator, Server server, Integer sid, String target, String addition) {
+		return doOrder(operator.getId(), sid, ChargeType.TARGET, target, operator, server, addition);
+	}
+
+	/** 充值的业务逻辑 */
+	@SuppressWarnings({ "rawtypes", "unchecked" })
+	protected OrderInfo doOrder(int oid, int sid, ChargeType type, String content, Operator operator, Server server,
+			String addition) {
+		ChargeCode code = null;
+		String serial = null;
+		int money = 0;
+		String goods = null;
+		// 检查是否测试充值
+		try {
+			// 发送充值请求
+			Client client = clientFactory.getClient(server.getAddress(), false);
+			Map<String, Object> requestBody = toRequestBody(oid, sid, type, content, addition);
+			Command command = getChargeCommand(type);
+			Request<Map<String, Object>> request = Request.valueOf(command, requestBody);
+			Response response = client.send(request);
+			// 充值请求结果处理
+			if (response.hasError()) {
+				code = ChargeCode.PROCESS_ERROR;
+			} else {
+				Result<OrderInfo> result = (Result<OrderInfo>) response.getBody();
+				code = ChargeCode.valueOf(result.getCode());
+				if (result.getCode() == Result.SUCCESS) {
+					OrderInfo info = result.getContent();
+					serial = info.getSerial();
+					money = info.getMoney();
+					goods = info.getAddition();
+				}
+			}
+		} catch (SocketException e) {
+			code = ChargeCode.SOCKET_ERROR;
+			if (logger.isWarnEnabled()) {
+				logger.warn("充值失败无法连接充值服[{}]", server.getAddress(), e);
+			}
+		} catch (RuntimeIoException e) {
+			code = ChargeCode.SOCKET_ERROR;
+			if (logger.isWarnEnabled()) {
+				logger.warn("充值失败无法连接充值服[{}]", server.getAddress(), e);
+			}
+		} catch (Exception e) {
+			code = ChargeCode.UNKNOWN_ERROR;
+			logger.error("未知的充值异常:", e);
+		}
+		return OrderInfo.valueOf(code, serial, money, goods);
+	}
+
+	private Command getChargeCommand(ChargeType type) {
+		Command command = null;
+		switch (type) {
+		case ACCOUNT:
+			command = ChargeCommand.ORDER_BY_ACCOUNT;
+			break;
+		case PLAYER:
+			command = ChargeCommand.ORDER_BY_PLAYER;
+			break;
+		case TARGET:
+			command = ChargeCommand.ORDER_BY_TARGET;
+			break;
+		default:
+			throw new IllegalStateException("未支持的充值类型:" + type);
+		}
+		return command;
+	}
+
+	/** 获取请求信息体 */
+	private Map<String, Object> toRequestBody(int oid, int sid, ChargeType type, String content, String addition) {
+		Map<String, Object> requestBody = new HashMap<String, Object>(7);
+		requestBody.put("oid", oid);
+		requestBody.put("sid", sid);
+		switch (type) {
+		case ACCOUNT:
+			requestBody.put("account", content);
+			break;
+		case PLAYER:
+			requestBody.put("player", content);
+			break;
+		case TARGET:
+			requestBody.put("target", content);
+			break;
+		default:
+			break;
+		}
+		if (addition != null) {
+			requestBody.put("addition", addition);
+		}
+		return requestBody;
+	}
+
+}

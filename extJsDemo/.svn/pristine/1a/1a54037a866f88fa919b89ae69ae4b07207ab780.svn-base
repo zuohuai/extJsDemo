@@ -1,0 +1,414 @@
+package com.my9yu.charge.tencent.ws;
+
+import java.util.Map;
+
+import javax.servlet.http.HttpServletRequest;
+
+import org.apache.commons.lang3.StringUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Controller;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestMethod;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.ResponseBody;
+
+import com.my9yu.charge.tencent.TencentConfig;
+import com.my9yu.charge.tencent.facade.CallbackCode;
+import com.my9yu.charge.tencent.model.CallbackRet;
+import com.my9yu.charge.tencent.service.CallbackService;
+import com.my9yu.charge.utils.HttpHelper;
+import com.my9yu.common.utils.json.JsonUtils;
+import com.my9yu.common.utils.model.Result;
+import com.my9yu.common.utils.model.ResultCode;
+
+/**
+ * 腾讯支付回调控制器
+ * @author Ramon
+ */
+@RequestMapping("callback")
+@Controller
+public class PayCallbackController {
+	private static final Logger logger = LoggerFactory.getLogger(PayCallbackController.class);
+
+	private static final int MAX_TIME_DIFF = 15 * 60 * 1000;
+
+	@Autowired
+	private CallbackService tencent;
+
+	@Autowired
+	private TencentConfig tencentConfig;
+
+	/**
+	 * 支付发货回调
+	 * 
+	 * <pre>
+	 * 		参数名称			类型	描述
+	 * @param 	openid				与APP通信的用户key，跳转到应用首页后，URL后会带该参数。由平台直接传给应用，应用原样传给平台即可。
+	 * 								根据APPID以及QQ号码生成，即不同的appid下，同一个QQ号生成的OpenID是不一样的。
+	 * @param 	appid				应用的唯一ID。可以通过appid查找APP基本信息。
+	 * @param	ts					linux时间戳。
+	 * 								注意开发者的机器时间与腾讯计费开放平台的时间相差不能超过15分钟。
+	 * @param	token				应用调用v3/pay/buy_goods接口成功返回的交易token。
+	 * 								注意，交易token的有效期为15分钟，必须在获取到token后的15分钟内传递该token，否则将会返回token不存在的错误。
+	 * @param	billno				支付流水号（64个字符长度。该字段和openid合起来是唯一的）。
+	 * @param	version				协议版本号，由于基于V3版OpenAPI，这里一定返回“v3”。
+	 * @param	zoneid				在支付营销分区配置说明页面，配置的分区ID即为这里的“zoneid”。
+	 * 								如果应用不分区，则为0。
+	 * 								回调发货的时候，根据这里填写的zoneid实现分区发货。
+	 * @param	providetype			发货类型
+	 * 								0表示道具购买，1表示营销活动中的道具赠送，2表示交叉营销任务集市中的奖励发放，3表示道具寄售系统中的道具转移。。
+	 * @param	sig					请求串的签名，由需要签名的参数生成。
+	 * 								（1）签名方法请见文档：腾讯开放平台第三方应用签名参数sig的说明。
+	 * 								（2）按照上述文档进行签名生成时，需注意回调协议里多加了一个步骤： 
+	 * 								在构造源串的第3步“将排序后的参数(key=value)用&拼接起来，并进行URL编码”之前，需对value先进行一次编码 （编码规则为：除了 0~9 a~z A~Z !*() 之外其他字符按其ASCII码的十六进制加%进行表示，例如“-”编码为“%2D”）。
+	 * 								（3）以每笔交易接收到的参数为准，接收到的所有参数除sig以外都要参与签名。为方便平台后续对协议进行扩展，请不要将参与签名的参数写死。
+	 * 								（4）所有参数都是string型，进行签名时必须使用原始接收到的string型值。 开发商出于本地记账等目的，对接收到的某些参数值先转为数值型再转为string型，导致字符串部分被截断，从而导致签名出错。如果要进行本地记账等逻辑，建
+	 * </pre>
+	 * @return
+	 */
+	@RequestMapping(value = "pay", method = { RequestMethod.GET, RequestMethod.POST })
+	@ResponseBody
+	public CallbackRet callback(HttpServletRequest request, // HTTP 请求
+			@RequestParam String openid, 		// 根据APPID以及QQ号码生成，即不同的appid下，同一个QQ号生成的OpenID是不一样的。
+			@RequestParam String appid,			// 应用的唯一ID。可以通过appid查找APP基本信息。
+			@RequestParam String ts,			// linux时间戳。
+			@RequestParam String version,		// 协议版本号，由于基于V3版OpenAPI，这里一定返回“v3”。
+			@RequestParam String zoneid,		// 回调发货的时候，根据这里填写的zoneid实现分区发货。
+			@RequestParam String providetype, 	// 0表示道具购买，1表示营销活动中的道具赠送，2表示交叉营销任务集市中的奖励发放。
+			@RequestParam String billno,		// 支付流水号（64个字符长度。该字段和openid合起来是唯一的）。
+			@RequestParam String token,			// 应用调用v3/pay/buy_goods接口成功返回的交易token。
+			@RequestParam String sig			// (必须)请求串的签名，由需要签名的参数生成，除sig以外的所有参数都要参与签名。
+	) {
+		try {
+			String method = request.getMethod().toLowerCase();
+			String path = request.getRequestURI();
+			Map<String, String> params = HttpHelper.getRequestParams(request);
+			String addition = JsonUtils.object2String(params);
+			if (logger.isInfoEnabled()) {
+				logger.info("充值服收到腾讯[{}]回调[{}], \n--请求参数 [{}], \n--参数JSON{}]",
+						new Object[] { method, path, request.getQueryString(), addition });
+			}
+			// 协议版本号
+			if (!StringUtils.equals("v3", version)) {
+				CallbackRet result = CallbackRet.valueOf(CallbackCode.INVAILD_PARAM, "协议版本不匹配");
+				if (logger.isInfoEnabled()) {
+					logger.info("回调接口返回[{}]", result);
+				}
+				return result;
+			}
+			// 检查签名
+			if (!tencentConfig.isValidCallbackSign(method, path, params, sig)) {
+				CallbackRet result = CallbackRet.valueOf(CallbackCode.INVAILD_PARAM, "签名检查失败");
+				if (logger.isInfoEnabled()) {
+					logger.info("回调接口返回[{}]", result);
+				}
+				return result;
+			}
+			// 检查APPID
+			if (!appid.equalsIgnoreCase(tencentConfig.getAppid())) {
+				CallbackRet result = CallbackRet.valueOf(CallbackCode.INVAILD_PARAM, "APPID不匹配");
+				if (logger.isInfoEnabled()) {
+					logger.info("回调接口返回[{}]", result);
+				}
+				return result;
+			}
+			// 检查时间
+			if (StringUtils.isBlank(ts)
+					|| Math.abs(System.currentTimeMillis() - Long.valueOf(ts) * 1000) > MAX_TIME_DIFF) {
+				CallbackRet result = CallbackRet.valueOf(CallbackCode.TOKEN_TIMEOUT, "TOKEN超时");
+				if (logger.isInfoEnabled()) {
+					logger.info("回调接口返回[{}]", result);
+				}
+				return result;
+			}
+			// 发货类型
+			if (StringUtils.equals("0", providetype)) {
+				// 支付发货
+				String payitem = params.get("payitem");
+				String amt = params.get("amt");
+				String payamt_coins = params.get("payamt_coins");
+				String pubacct_payamt_coins = params.get("pubacct_payamt_coins");
+				return pay(zoneid, billno, token, openid, payitem, amt, payamt_coins, pubacct_payamt_coins, addition);
+			} else if (StringUtils.equals("3", providetype)) {
+				String payitem = params.get("payitem");
+				String amt = params.get("amt");
+				String seller_openid = params.get("seller_openid");
+				String fee = params.get("fee");
+				String fee_acct = params.get("fee_acct");
+				String fee_pubcoins_save = params.get("fee_pubcoins_save");
+				String fee_coins = params.get("fee_coins");
+				String fee_coins_save = params.get("fee_coins_save");
+				String uni_appamt = params.get("uni_appamt");
+				return exchange(zoneid, billno, token, openid, payitem, amt, seller_openid, fee, fee_acct,
+						fee_pubcoins_save, fee_coins, fee_coins_save, uni_appamt, addition);
+			} else {
+				CallbackRet result = CallbackRet.valueOf(CallbackCode.INVAILD_PARAM, "发货类型不匹配");
+				if (logger.isInfoEnabled()) {
+					logger.info("回调接口返回[{}]", result);
+				}
+				return result;
+			}
+		} catch (Exception e) {
+			logger.error("程序错误", e);
+			CallbackRet result = CallbackRet.valueOf(CallbackCode.PROGRAM_ERROR, "程序错误");
+			if (logger.isInfoEnabled()) {
+				logger.info("回调接口返回[{}]", result);
+			}
+			return result;
+		}
+	}
+
+	/**
+	 * 支付发货回调
+	 * 
+	 * <pre>
+	 * 
+	 * 		参数名称			描述
+	 * @param	zoneid			在支付营销分区配置说明页面，配置的分区ID即为这里的“zoneid”。
+	 * 							如果应用不分区，则为0。
+	 * 							回调发货的时候，根据这里填写的zoneid实现分区发货。
+	 * @param	billno			支付流水号（64个字符长度。该字段和openid合起来是唯一的）。
+	 * @param	token			应用调用v3/pay/buy_goods接口成功返回的交易token。
+	 * 							注意，交易token的有效期为15分钟，必须在获取到token后的15分钟内传递该token，否则将会返回token不存在的错误。
+	 * @param 	openid			与APP通信的用户key，跳转到应用首页后，URL后会带该参数。由平台直接传给应用，应用原样传给平台即可。
+	 * 							根据APPID以及QQ号码生成，即不同的appid下，同一个QQ号生成的OpenID是不一样的。
+	 * @param	payitem			物品信息。
+	 * 							（1）接收标准格式为ID*price*num，回传时ID为必传项。批量购买套餐物品则用“;”分隔，字符串中不能包含"|"特殊字符。
+	 * 							（2）ID表示物品ID，price表示单价（以Q点为单位，单价最少不能少于2Q点，1Q币=10Q点。单价的制定需遵循道具定价规范），num表示建议的购买数量。
+	 * 							示例：
+	 * 							批量购买套餐，套餐中包含物品1和物品2。物品1的ID为G001，该物品的单价为10Q点，购买数量为1；物品2的ID为G008，该物品的单价为8Q点，购买数量为2，则payitem为：G001*10*1;G008*8*2 。
+	 * @param	amt				Q点/Q币消耗金额或财付通游戏子账户的扣款金额。可以为空，若传递空值或不传本参数则表示未使用Q点/Q币/财付通游戏子账户。
+	 * 							允许游戏币、Q点、抵扣券三者混合支付，或只有其中某一种进行支付的情况。用户购买道具时，系统会优先扣除用户账户上的游戏币，游戏币余额不足时，使用Q点支付，Q点不足时使用Q币/财付通游戏子账户。
+	 * 							这里的amt的值将纳入结算，参与分成。
+	 * 							**注意，这里以0.1Q点为单位**。即如果总金额为18Q点，则这里显示的数字是180。请开发者关注，特别是对账的时候注意单位的转换。
+	 * @param	payamt_coins	扣取的游戏币总数，单位为Q点。可以为空，若传递空值或不传本参数则表示未使用游戏币。
+	 * 							允许游戏币、Q点、抵扣券三者混合支付，或只有其中某一种进行支付的情况。用户购买道具时，系统会优先扣除用户账户上的游戏币，游戏币余额不足时，使用Q点支付，Q点不足时使用Q币/财付通游戏子账户。
+	 * 							游戏币由平台赠送或由好友打赏，平台赠送的游戏币不纳入结算，即不参与分成；好友打赏的游戏币按消耗量参与结算（详见：货币体系与支付场景）。
+	 * @param	pubacct_payamt_coins	
+	 * 							扣取的抵用券总金额，单位为Q点。可以为空，若传递空值或不传本参数则表示未使用抵扣券。
+	 * 							允许游戏币、Q点、抵扣券三者混合支付，或只有其中某一种进行支付的情况。用户购买道具时，可以选择使用抵扣券进行一部分的抵扣，剩余部分使用游戏币/Q点。
+	 * 							平台默认所有上线支付的应用均支持抵扣券。自2012年7月1日起，金券银券消耗将和Q点消耗一起纳入收益计算（详见：货币体系与支付场景）。
+	 * @param 	appid			应用的唯一ID。可以通过appid查找APP基本信息。
+	 * @param	ts				linux时间戳。
+	 * 							注意开发者的机器时间与腾讯计费开放平台的时间相差不能超过15分钟。
+	 * @param	version			协议版本号，由于基于V3版OpenAPI，这里一定返回“v3”。
+	 * @param	providetype		发货类型，这里请传入0。
+	 * 							0表示道具购买，1表示营销活动中的道具赠送，2表示交叉营销任务集市中的奖励发放。
+	 * @param	sig				请求串的签名，由需要签名的参数生成。
+	 * 							（1）签名方法请见文档：腾讯开放平台第三方应用签名参数sig的说明。
+	 * 							（2）按照上述文档进行签名生成时，需注意回调协议里多加了一个步骤： 
+	 * 							在构造源串的第3步“将排序后的参数(key=value)用&拼接起来，并进行URL编码”之前，需对value先进行一次编码 （编码规则为：除了 0~9 a~z A~Z !*() 之外其他字符按其ASCII码的十六进制加%进行表示，例如“-”编码为“%2D”）。
+	 * 							（3）以每笔交易接收到的参数为准，接收到的所有参数除sig以外都要参与签名。为方便平台后续对协议进行扩展，请不要将参与签名的参数写死。
+	 * 							（4）所有参数都是string型，进行签名时必须使用原始接收到的string型值。 开发商出于本地记账等目的，对接收到的某些参数值先转为数值型再转为string型，导致字符串部分被截断，从而导致签名出错。如果要进行本地记账等逻辑，建
+	 * </pre>
+	 * @return
+	 */
+	CallbackRet pay(String zoneid, 			// 根据APPID以及QQ号码生成，即不同的appid下，同一个QQ号生成的OpenID是不一样的。
+			String billno,					// 物品信息。
+			String token,					// 回调发货的时候，根据这里填写的zoneid实现分区发货。
+			String openid,					// 支付流水号（64个字符长度。该字段和openid合起来是唯一的）。
+			String payitem,					// 应用调用v3/pay/buy_goods接口成功返回的交易token。
+			String amt,						// Q点/Q币消耗金额或财付通游戏子账户的扣款金额 **注意，这里以0.1Q点为单位***
+			String payamt_coins,			// 扣取的游戏币总数，单位为Q点。
+			String pubacct_payamt_coins, 	// 扣取的抵用券总金额，单位为Q点。
+			String details					// 请求参数详细信息
+	) {
+		// 检查购买物品信息
+		if (StringUtils.isBlank(payitem)) {
+			CallbackRet result = CallbackRet.valueOf(CallbackCode.INVAILD_PARAM, "购买物品信息为空");
+			if (logger.isInfoEnabled()) {
+				logger.info("回调接口返回[{}]", result);
+			}
+			return result;
+		}
+		try {
+			Map<String, Integer> items = tencentConfig.getItemsMap(payitem);
+			if (items.isEmpty()) {
+				CallbackRet result = CallbackRet.valueOf(CallbackCode.INVAILD_PARAM, "购买物品信息为空");
+				if (logger.isInfoEnabled()) {
+					logger.info("回调接口返回[{}]", result);
+				}
+				return result;
+			}
+			// 获取转换的充值人民币值(分/0.1Q点)
+			int income = getRmb(amt, payamt_coins, pubacct_payamt_coins);
+			if (income == 0) {
+				CallbackRet result = CallbackRet.valueOf(CallbackCode.INVAILD_PARAM, "支付金额为0");
+				if (logger.isInfoEnabled()) {
+					logger.info("回调接口返回[{}]", result);
+				}
+				return result;
+			}
+			int server = Integer.valueOf(zoneid);
+			int operator = tencentConfig.getOperator();
+			Result<?> content = tencent.pay(operator, server, openid, token, billno, items, income, details);
+			int code = content.getCode();
+			if (code == ResultCode.SUCCESS) {
+				CallbackRet result = CallbackRet.valueOf(code, "OK");
+				if (logger.isInfoEnabled()) {
+					logger.info("回调接口返回[{}]", result);
+				}
+				return result;
+			}
+			CallbackRet result = CallbackRet.valueOf(code, (String) content.getContent());
+			if (logger.isInfoEnabled()) {
+				logger.info("回调接口返回[{}]", result);
+			}
+			return result;
+		} catch (Exception e) {
+			logger.error("程序错误", e);
+			CallbackRet result = CallbackRet.valueOf(CallbackCode.PROGRAM_ERROR, "程序错误");
+			if (logger.isInfoEnabled()) {
+				logger.info("回调接口返回[{}]", result);
+			}
+			return result;
+		}
+	}
+
+	/**
+	 * <pre>
+	 * 参数名称						描述
+	 * @param openid				在道具寄售系统中，购买道具的用户openid。
+	 * 								与APP通信的用户key，跳转到应用首页后，URL后会带该参数。由平台直接传给应用，应用原样传给平台即可。
+	 * 								根据APPID以及QQ号码生成，即不同的appid下，同一个QQ号生成的OpenID是不一样的。
+	 * @param appid					应用的唯一ID。可以通过appid查找APP基本信息。
+	 * @param ts					linux时间戳。
+	 * 								注意开发者的机器时间与腾讯计费开放平台的时间相差不能超过15分钟。
+	 * @param payitem				物品购买信息。
+	 * 								（1）接收标准格式为ID*price*num，回传时ID为必传项。批量购买套餐物品则用“;”分隔，字符串中不能包含"|"特殊字符。
+	 * 								（2）ID表示物品ID，price表示单价（以Q点为单位，单价最少不能少于2Q点，1Q币=10Q点。单价的制定需遵循道具定价规范），num表示购买数量。
+	 * 								示例：
+	 * 								批量购买套餐，套餐中包含物品1和物品2。物品1的ID为G001，该物品的单价为10Q点，购买数量为1；物品2的ID为G008，该物品的单价为8Q点，购买数量为2，则payitem为：G001*10*1;G008*8*2 。
+	 * @param token					应用调用v3/pay/exchange_goods接口成功返回的交易token。
+	 * 								注意，交易token的有效期为15分钟，必须在获取到token后的15分钟内传递该token，否则将会返回token不存在的错误。
+	 * @param billno				支付流水号（64个字符长度。该字段和openid合起来是唯一的）。
+	 * @param version				协议版本号，由于基于V3版OpenAPI，这里一定返回“v3”。
+	 * @param zoneid				在支付营销分区配置说明页面，配置的分区ID即为这里的“zoneid”。
+	 * 								如果应用不分区，则为0。
+	 * 								回调发货的时候，根据这里填写的zoneid实现分区发货。
+	 * @param providetype			发货类型，这里请传入3。
+	 * 								0表示道具购买，1表示营销活动中的道具赠送，2表示交叉营销任务集市中的奖励发放，3表示道具寄售系统中的道具转移。
+	 * @param amt					Q点/Q币消耗金额或财付通游戏子账户的扣款金额。道具寄售目前暂不支持Q点/Q币/财付通游戏子账户，因此该参数的值为0。
+	 * @param seller_openid			道具寄售系统中，售卖道具的用户的openid。
+	 * @param fee					应用扣除的佣金，包括扣除公共游戏币账户和分区游戏币账户中的金额。
+	 * 								佣金：用户在应用中售卖道具获得游戏币，需要付给应用一定的游戏币作为佣金。
+	 * @param fee_acct				佣金中扣掉Q币Q点的金额，道具寄售目前暂不支持Q点/Q币或财付通子账户支付，因此该参数为0。
+	 * @param fee_pubcoins			佣金中扣掉公共游戏币账户金额，包括充值得到的游戏币和赠送得到的游戏币。
+	 * 								其中赠送得到的游戏币不参与结算，如无公共游戏币账户则为0。
+	 * @param fee_pubcoins_save		佣金中扣掉公共游戏币账户中通过充值得到的游戏币金额，该金额将参与结算。
+	 * 								如无公共游戏币账户则为0。
+	 * @param fee_coins				佣金中扣掉分区游戏币账户金额，包括充值得到的游戏币和赠送得到的游戏币。
+	 * 								其中赠送得到的游戏币不参与结算，如无分区游戏币账户则为0。
+	 * @param fee_coins_save		佣金中扣掉分区游戏币账户中通过充值得到的游戏币金额，该金额将参与结算。
+	 * 								如无分区游戏币账户则为0。
+	 * @param uni_appamt			购买的道具的价格。 
+	 * 								注意，这里以0.1Q点为单位。即如果总金额为18Q点，则这里显示的数字是180。请开发者关注，特别是对账的时候注意单位的转换。
+	 * @param sig					请求串的签名，由需要签名的参数生成。
+	 * 								（1）签名方法请见文档：腾讯开放平台第三方应用签名参数sig的说明。
+	 * 								（2）按照上述文档进行签名生成时，需注意回调协议里多加了一个步骤： 
+	 * 								在构造源串的第3步“将排序后的参数(key=value)用&拼接起来，并进行URL编码”之前，需对value先进行一次编码 （编码规则为：除了 0~9 a~z A~Z !*() 之外其他字符按其ASCII码的十六进制加%进行表示，例如“-”编码为“%2D”）。
+	 * 								（3）以每笔交易接收到的参数为准，接收到的所有参数除sig以外都要参与签名。为方便平台后续对协议进行扩展，请不要将参与签名的参数写死。
+	 * 								（4）所有参数都是string型，进行签名时必须使用原始接收到的string型值。 开发商出于本地记账等目的，对接收到的某些参数值先转为数值型再转为string型，导致字符串部分被截断，从而导致签名出错。如果要进行本地记账等逻辑，建议用另外的变量来保存转换后的数值。
+	 * </pre>
+	 */
+	CallbackRet exchange(String zoneid,					// 回调发货的时候，根据这里填写的zoneid实现分区发货。
+			String billno,					// 支付流水号（64个字符长度。该字段和openid合起来是唯一的）。
+			String token,					// 应用调用v3/pay/buy_goods接口成功返回的交易token。
+			String openid, 					// 根据APPID以及QQ号码生成，即不同的appid下，同一个QQ号生成的OpenID是不一样的。
+			String payitem,					// 物品购买信息。
+			String amt,						// Q点/Q币消耗金额或财付通游戏子账户的扣款金额。道具寄售目前暂不支持Q点/Q币/财付通游戏子账户，因此该参数的值为0。
+			String seller_openid,			// 道具寄售系统中，售卖道具的用户的openid。
+			String fee,						// 应用扣除的佣金，包括扣除公共游戏币账户和分区游戏币账户中的金额。
+			String fee_acct, 				// 佣金中扣掉Q币Q点的金额，道具寄售目前暂不支持Q点/Q币或财付通子账户支付，因此该参数为0。
+			String fee_pubcoins_save,		// 佣金中扣掉公共游戏币账户中通过充值得到的游戏币金额，该金额将参与结算。
+			String fee_coins,				// 佣金中扣掉分区游戏币账户金额，包括充值得到的游戏币和赠送得到的游戏币。
+			String fee_coins_save,			// 佣金中扣掉分区游戏币账户中通过充值得到的游戏币金额，该金额将参与结算。
+			String uni_appamt,				// 购买的道具的价格。
+			String details					// 请求参数详细信息
+	) {
+
+		// 检查购买物品信息
+		if (StringUtils.isBlank(payitem)) {
+			CallbackRet result = CallbackRet.valueOf(CallbackCode.INVAILD_PARAM, "购买物品信息为空");
+			if (logger.isInfoEnabled()) {
+				logger.info("回调接口返回[{}]", result);
+			}
+			return result;
+		}
+		try {
+			Map<String, Integer> items = tencentConfig.getItemsMap(payitem);
+			if (items.isEmpty()) {
+				CallbackRet result = CallbackRet.valueOf(CallbackCode.INVAILD_PARAM, "购买物品信息为空");
+				if (logger.isInfoEnabled()) {
+					logger.info("回调接口返回[{}]", result);
+				}
+				return result;
+			}
+
+			// 游戏佣金收入
+			int fee_income = getRmb(null, fee_pubcoins_save, fee_coins_save);
+			int operator = tencentConfig.getOperator();
+			int server = Integer.valueOf(zoneid);
+			int appamt = Integer.valueOf(uni_appamt);
+			int fee_value = Integer.valueOf(fee);
+			Result<?> content = tencent.exchange(operator, server, openid, seller_openid, token, billno, items, appamt,
+					fee_value, fee_income, details);
+			int code = content.getCode();
+			if (code == ResultCode.SUCCESS) {
+				CallbackRet result = CallbackRet.valueOf(code, "OK");
+				if (logger.isInfoEnabled()) {
+					logger.info("回调接口返回[{}]", result);
+				}
+				return result;
+			}
+			CallbackRet result = CallbackRet.valueOf(code, (String) content.getContent());
+			if (logger.isInfoEnabled()) {
+				logger.info("回调接口返回[{}]", result);
+			}
+			return result;
+		} catch (Exception e) {
+			logger.error("程序错误", e);
+			CallbackRet result = CallbackRet.valueOf(CallbackCode.PROGRAM_ERROR, "程序错误");
+			if (logger.isInfoEnabled()) {
+				logger.info("回调接口返回[{}]", result);
+			}
+			return result;
+		}
+	}
+
+	// ----------- 内币方法 -----------
+
+	/** 获取转换的充值人民币值(单位:分) */
+	private int getRmb(String amt, String payamt_coins, String pubacct_payamt_coins) {
+		// 扣取的q点
+		int amt_val = 0;
+		if (!StringUtils.isBlank(amt)) {
+			try {
+				amt_val = Integer.parseInt(amt);
+			} catch (Exception e) {
+			}
+		}
+		// 老的游戏币
+		int payamt_coins_val = 0;
+		if (!StringUtils.isBlank(payamt_coins)) {
+			try {
+				payamt_coins_val = Integer.parseInt(payamt_coins);
+			} catch (Exception e) {
+			}
+		}
+		// 兑换券
+		int pubacct_payamt_coins_val = 0;
+		if (!StringUtils.isBlank(pubacct_payamt_coins)) {
+			try {
+				pubacct_payamt_coins_val = Integer.parseInt(pubacct_payamt_coins);
+			} catch (Exception e) {
+			}
+		}
+		// 三者加起来
+		return amt_val + payamt_coins_val * 10 + pubacct_payamt_coins_val * 10;
+
+	}
+
+}

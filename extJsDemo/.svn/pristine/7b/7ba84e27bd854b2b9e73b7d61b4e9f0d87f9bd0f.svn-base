@@ -1,0 +1,18 @@
+package com.my9yu.charge.common.server.model;
+
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Set;
+
+@SuppressWarnings("serial")
+public class GameInstanceServers extends HashMap<String, Set<Integer>> {
+	public void putValue(String key, Integer server) {
+		if (!containsKey(key)) {
+			put(key, new HashSet<Integer>());
+		}
+		Set<Integer> data = get(key);
+
+		data.add(server);
+
+	}
+}

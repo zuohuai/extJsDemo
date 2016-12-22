@@ -1,0 +1,57 @@
+package com.my9yu.charge.ws.pay;
+
+import javax.servlet.ServletRequest;
+
+import org.apache.commons.lang3.StringUtils;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.stereotype.Controller;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestMethod;
+import org.springframework.web.bind.annotation.RequestParam;
+
+import com.my9yu.charge.common.server.entity.Operator;
+import com.my9yu.charge.common.server.entity.Server;
+import com.my9yu.charge.facade.ChargeCode;
+import com.my9yu.common.utils.model.Result;
+
+/**
+ * 按帐号充值接口
+ * @author Frank
+ */
+@Controller
+@RequestMapping("pay/account")
+public class ByAccountController extends AbstractPayController {
+
+	/** 按帐号名充值 */
+	@RequestMapping(value = "{oid}/{sid}", method = { RequestMethod.GET, RequestMethod.POST })
+	public ResponseEntity<Result<String>> charge(@PathVariable int oid, @PathVariable int sid,
+			@RequestParam String content, @RequestParam String order,
+			@RequestParam(required = false, defaultValue = "0") int money,
+			@RequestParam(required = false, defaultValue = "0") int gold,
+			@RequestParam(required = false, defaultValue = "0") int source,
+			@RequestParam(required = false) String addition, @RequestParam String sign, ServletRequest request) {
+		if (StringUtils.isEmpty(addition)) {
+			addition = null;
+		}
+		// 安全检查
+		Operator operator = getOperator(oid);
+		Server server = getServer(operator, sid);
+		String ip = request.getRemoteAddr();
+		chkRemoteAddr(operator, ip);
+		chkSign(operator.getKey(), sign, content, order);
+		// 参数检查
+		if (!isValidChargeInfo(operator, money, gold, addition)) {
+			ChargeCode code = ChargeCode.INVALID_CHARGE;
+			return new ResponseEntity<Result<String>>(new Result<String>(code.getValue(), code.getDescription()),
+					HttpStatus.OK);
+		}
+		// 充值与返回
+		ChargeCode code = chargeService.chargeByAccount(operator, server, sid, order, content, money, gold, addition,
+				source, false);
+		return new ResponseEntity<Result<String>>(new Result<String>(code.getValue(), code.getDescription()),
+				HttpStatus.OK);
+	}
+
+}

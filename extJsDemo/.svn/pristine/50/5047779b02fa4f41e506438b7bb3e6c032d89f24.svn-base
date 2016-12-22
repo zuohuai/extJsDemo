@@ -1,0 +1,85 @@
+package com.my9yu.charge.admin;
+
+import java.util.Collection;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.stereotype.Controller;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestMethod;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.ResponseBody;
+
+import com.my9yu.charge.common.server.entity.GameInstance;
+import com.my9yu.charge.common.server.model.ChargeErrorCode;
+import com.my9yu.charge.common.server.model.GameInstanceServers;
+import com.my9yu.charge.common.server.service.ServerService;
+import com.my9yu.charge.common.server.service.ServerService.SearchGameInstanceType;
+import com.my9yu.common.utils.json.JsonUtils;
+
+@Controller
+@RequestMapping("gameInstance")
+public class GameInstanceController {
+
+	@Autowired
+	private ServerService serverService;
+
+	/**
+	 * 删除 游戏实例
+	 **/
+	@SuppressWarnings({ "rawtypes", "unchecked" })
+	@RequestMapping(value = "{id}/api-gameInstance", method = RequestMethod.DELETE)
+	public ResponseEntity removeGameInstance(@PathVariable String id) {
+
+		boolean flag = serverService.removeCacheGameInstance(id);
+		if (!flag)
+			return new ResponseEntity(ChargeErrorCode.CANNOT_DELETE_GAMEINSTANCE_ERROR, HttpStatus.OK);
+
+		return new ResponseEntity(ChargeErrorCode.SUCCESS, HttpStatus.OK);
+	}
+
+	/**
+	 * 添加 游戏实例
+	 **/
+	@SuppressWarnings({ "rawtypes", "unchecked" })
+	@RequestMapping(value = "{id}/api-gameInstance", method = RequestMethod.POST)
+	public ResponseEntity addGameInstance(@RequestBody String json) {
+
+		try {
+			GameInstance entity = JsonUtils.string2Object(json, GameInstance.class);
+			serverService.addCacheGameInstance(entity);
+			return new ResponseEntity(ChargeErrorCode.SUCCESS, HttpStatus.OK);
+		} catch (Exception e) {
+			return new ResponseEntity(ChargeErrorCode.JSON_ERROR, HttpStatus.OK);
+		}
+
+	}
+
+	/**
+	 * 查询游戏实例
+	 * @param operator 是否按运营商查，null 为全平台
+	 * @param type {@link SearchGameInstanceType}
+	 */
+	@RequestMapping(value = "api-gameInstance", method = RequestMethod.GET)
+	@ResponseBody
+	public Collection<GameInstance> getOperatorGameInstance(@RequestParam(required = false) Integer operator,
+			@RequestParam SearchGameInstanceType type) {
+
+		return serverService.getCacheGameInstance(operator, type);
+	}
+
+	/**
+	 * 查询游戏实例 绑定的服务器列表
+	 * @param id 游戏实例 id return {@link GameInstanceServers}
+	 */
+	@RequestMapping(value = "{id}/api-gameInstance", method = RequestMethod.GET)
+	@ResponseBody
+	public GameInstanceServers getGameInstanceServers(@PathVariable String id) {
+
+		return serverService.getGameInstanceServers(id);
+	}
+
+}

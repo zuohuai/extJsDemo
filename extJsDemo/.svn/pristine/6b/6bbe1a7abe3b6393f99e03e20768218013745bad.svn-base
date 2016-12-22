@@ -1,0 +1,505 @@
+package com.my9yu.charge.tencent.service;
+
+import java.util.Calendar;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
+import javax.annotation.PostConstruct;
+
+import org.apache.mina.core.RuntimeIoException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.slf4j.helpers.FormattingTuple;
+import org.slf4j.helpers.MessageFormatter;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+
+import com.my9yu.charge.Config;
+import com.my9yu.charge.common.server.entity.Operator;
+import com.my9yu.charge.common.server.entity.Server;
+import com.my9yu.charge.common.server.service.ServerService;
+import com.my9yu.charge.entity.Charge;
+import com.my9yu.charge.entity.ChargeState;
+import com.my9yu.charge.entity.ChargeType;
+import com.my9yu.charge.facade.ChargeCode;
+import com.my9yu.charge.model.ChargeTarget;
+import com.my9yu.charge.model.RetryCharge;
+import com.my9yu.charge.repository.ChargeRepository;
+import com.my9yu.charge.service.ChargeService;
+import com.my9yu.charge.tencent.TencentConfig;
+import com.my9yu.charge.tencent.facade.CallbackCode;
+import com.my9yu.charge.tencent.facade.CallbackCommand;
+import com.my9yu.charge.ws.exception.RequestForbiddenException;
+import com.my9yu.common.scheduler.impl.FixTimeDelayQueue;
+import com.my9yu.common.socket.client.Client;
+import com.my9yu.common.socket.client.ClientFactory;
+import com.my9yu.common.socket.core.Request;
+import com.my9yu.common.socket.core.Response;
+import com.my9yu.common.socket.exception.SocketException;
+import com.my9yu.common.utils.collection.ConcurrentHashSet;
+import com.my9yu.common.utils.concurrent.DelayedElement;
+import com.my9yu.common.utils.model.Result;
+import com.my9yu.common.utils.time.DateUtils;
+
+@Service
+public class CallbackService {
+	private static final Logger logger = LoggerFactory.getLogger(ChargeService.class);
+
+	@Autowired
+	private ClientFactory clientFactory;
+	@Autowired
+	private ChargeRepository chargeRepository;
+	@Autowired
+	private ServerService serverService;
+	@Autowired
+	private Config config;
+	@Autowired
+	private TencentConfig tencentConfig;
+
+	private ConcurrentHashSet<String> temporaries = new ConcurrentHashSet<String>();
+	
+	private FixTimeDelayQueue<DelayedElement<RetryCharge>> retryQueue;
+
+	@PostConstruct
+	protected void init() {
+		
+		if(!tencentConfig.isEnable()) {
+			return;
+		}
+		
+		logger.error("开启腾讯支付到游戏服的确认线程");
+		
+		retryQueue = new FixTimeDelayQueue<DelayedElement<RetryCharge>>(config.getDelayTimes());
+		for (Operator operator : serverService.allOperator()) {
+			if (!operator.isRetry()) {
+				continue;
+			}
+			List<Charge> charges = chargeRepository.findWait(operator.getId());
+			for (Charge charge : charges) {
+				RetryCharge retryCharge = RetryCharge.valueOf(operator.getId(), charge.getServer(), charge.getOrder());
+				retryQueue.put(new DelayedElement<RetryCharge>(retryCharge, charge.getRetryTime()));
+				logger.error("重新载入确认信息[{}]计划执行时间[{}]", retryCharge,
+							DateUtils.date2String(charge.getRetryTime(), DateUtils.PATTERN_DATE_TIME));
+			}
+		}
+		Thread retryThread = new Thread(new Runnable() {
+			@Override
+			public void run() {
+				while (true) {
+					try {
+						DelayedElement<RetryCharge> e = retryQueue.take();
+						RetryCharge retryCharge = e.getContent();
+						if (logger.isDebugEnabled()) {
+							if (logger.isDebugEnabled()) {
+								logger.debug("补单信息[{}]到达执行时间[{}]", retryCharge,
+										DateUtils.date2String(e.getEnd(), DateUtils.PATTERN_DATE_TIME));
+							}
+						}
+						Operator operator = serverService.getOperator(retryCharge.getOid());
+						if (operator == null) {
+							continue;	// 运营商已经不存在
+						}
+						if (!operator.isRetry()) {
+							continue;	// 运营商已经关闭了自动补单
+						}
+						Server server = serverService.findServer(operator.getId(), retryCharge.getSid());
+						if (server == null) {
+							continue;	// 游戏服已经不存在
+						}
+						Charge current = chargeRepository.get(retryCharge.getOid(), retryCharge.getSid(),
+								retryCharge.getOrder());
+						if (current == null || current.getState() != ChargeState.WAIT) {
+							continue;	// 充值订单不存在或状态不正确
+						}
+						doChargeCheck(operator, server, retryCharge.getSid(), current);
+					} catch (InterruptedException e) {
+						logger.error("充值状态确认线程被打断", e);
+					} catch (Exception e) {
+						logger.error("充值状态确认线程未知异常", e);
+					}
+				}
+			}
+		}, "充值重试");
+		retryThread.setDaemon(true);
+		retryThread.start();
+	}
+	
+	/**
+	 * 充值订单状态确认
+	 * @param operator
+	 * @param server
+	 * @param sid
+	 * @param charge
+	 */
+	@SuppressWarnings("unchecked")
+	private void doChargeCheck(Operator operator, Server server, int sid, Charge charge) {
+		ChargeCode code = null;
+		try {
+			// 发送确认请求
+			Client client = clientFactory.getClient(server.getAddress(), false);
+			Map<String, Object> requestBody = new HashMap<String, Object>(7);
+			requestBody.put("oid", operator.getId());
+			requestBody.put("sid", sid);
+			requestBody.put("openid", charge.getContent());
+			requestBody.put("billno", charge.getOrder().split("_")[1]);
+			Request<Map<String, Object>> request = Request.valueOf(CallbackCommand.ORDER_CHECK, requestBody);
+			Response<?> response = client.send(request);
+			// 充值请求结果处理
+			if (response.hasError()) {
+				code = ChargeCode.PROCESS_ERROR;
+			} else {
+				Result<CallbackCode> result = (Result<CallbackCode>) response.getBody();
+				CallbackCode backCode = result.getContent();
+				if(backCode == CallbackCode.SUCCESS) {
+					code = ChargeCode.DONE;
+				} else {
+					code = ChargeCode.PROCESS_ERROR;
+				}
+			}
+		} catch (SocketException e) {
+			code = ChargeCode.SOCKET_ERROR;
+			if (logger.isWarnEnabled()) {
+				logger.warn("充值订单状态确认无法连接充值服[{}]", server.getAddress(), e);
+			}
+		} catch (RuntimeIoException e) {
+			code = ChargeCode.SOCKET_ERROR;
+			if (logger.isWarnEnabled()) {
+				logger.warn("充值订单状态确认无法连接充值服[{}]", server.getAddress(), e);
+			}
+		} catch (Exception e) {
+			code = ChargeCode.UNKNOWN_ERROR;
+			logger.error("充值订单状态确认异常:", e);
+		}
+
+		if (code.isSuccess()) {
+			// 补单成功
+			charge.checkComplete(code);
+			logger.error("充值订单状态确认[{}] - 重试[{}]次成功!!!", charge.getOrder(), charge.getRetry());
+		} else {
+			// 补单失败
+			charge.checkFailed(code, getNextRetryTime(charge.getRetry() + 1));
+			if (code.isRetry() && charge.getRetry() < config.getRetryMax()) {
+				// 准备进行再次充值重试
+				retryQueue.add(DelayedElement.valueOf(RetryCharge.valueOf(operator.getId(), sid, charge.getOrder()), charge.getRetryTime()));
+				logger.error("充值订单状态确认[{}] - 重试[{}]计划执行时间[{}]", new Object[] { charge.getOrder(), charge.getRetry(),
+					DateUtils.date2String(charge.getRetryTime(), DateUtils.PATTERN_DATE_TIME) });
+			} else {
+				charge.setState(ChargeState.CANCEL);
+				logger.error("充值订单状态确认[{}] - [{}]次失败停止重试, 异常[{}] - {}",
+						new Object[] { charge.getOrder(), charge.getRetry(), code.getValue(), code.getDescription() });
+			}
+		}
+		chargeRepository.save(operator.getId(), charge);
+	}
+
+	// -------- 支付回调 ------------
+
+	/**
+	 * 支付回调
+	 */
+	public Result<?> pay(int oid, int sid, String openid, String token, String billno, Map<String, Integer> items,
+			int income, String detail) {
+		// 检查是否处理中订单
+		String order = toOrder(openid, billno);
+		if (!tryAdd(oid, sid, order)) {
+			FormattingTuple message = MessageFormatter.arrayFormat("运营商[{}]服务器[{}]的BILLNO[{}]处理中", new Object[] { oid,
+				sid, order });
+			logger.error(message.getMessage());
+			return Result.ERROR(CallbackCode.BUSY.getCode(), "处理中...");
+		}
+
+		try {
+			// 检查是否重复订单
+			if (chargeRepository.isExist(oid, sid, order)) {
+				FormattingTuple message = MessageFormatter.arrayFormat("运营商[{}]服务器[{}]的BILLNO[{}]重复", new Object[] {
+					oid, sid, order });
+				logger.error(message.getMessage());
+				// 订单已存在，成功支付
+				return Result.ERROR(CallbackCode.CONSUME_SUCCESS.getCode(), "重复的BILLNO请求");
+			}
+			return doPay(oid, sid, openid, token, billno, items, income, detail);
+		} finally {
+			release(oid, sid, order);
+		}
+	}
+
+	/** 支付回调 */
+	@SuppressWarnings({ "rawtypes", "unchecked" })
+	private Result<?> doPay(int oid, int sid, String openid, String token, String billno, Map<String, Integer> items,
+			int income, String addition) {
+		String address = getServerAddress(oid, sid);
+		CallbackCode code;
+		String order = toOrder(openid, billno);
+		try {
+			// 发送充值请求
+			Client client = clientFactory.getClient(address, false);
+			Map<String, Object> requestBody = new HashMap<String, Object>(7);
+			requestBody.put("oid", oid);
+			requestBody.put("sid", sid);
+			requestBody.put("token", token);
+			requestBody.put("openid", openid);
+			requestBody.put("items", items);
+			requestBody.put("income", income);
+			requestBody.put("detail", addition);
+			Request<Map<String, Object>> request = Request.valueOf(CallbackCommand.PAY_TOKEN, requestBody);
+			Response response = client.send(request);
+			// 充值请求结果处理
+			if (response.hasError()) {
+				code = CallbackCode.PROGRAM_ERROR;
+				return Result.ERROR(code.getCode(), "程序异常 - " + request.getState());
+			} else {
+				Result<ChargeTarget> result = (Result<ChargeTarget>) response.getBody();
+				code = CallbackCode.valueOf(result.getCode());
+				if (code == null) {
+					return Result.ERROR(CallbackCode.PROGRAM_ERROR.getCode(), "未定义系统异常 - " + result.getCode());
+				}
+				// 充值成功, 记录充值记录
+				if (code == CallbackCode.SUCCESS) {
+					ChargeTarget target = result.getContent();
+					String info = target.getAddition();
+					boolean test = isTest(oid, openid);
+					int gold;
+					if(target.getGold() > 0) {
+						gold = target.getGold();
+					} else {
+						gold = income / 10;
+					}
+					Charge entity = Charge.valueOfComplete(sid, order, ChargeType.ACCOUNT, openid, test, income, gold,
+							info, ChargeCode.DONE, target);
+					chargeRepository.save(oid, entity);
+					return Result.SUCCESS(target);
+				}
+				return Result.ERROR(code.getCode(), code.getMessage());
+			}
+		} catch (SocketException e) {
+			logger.error("订单[{}]充值失败无法连接充值服[{}]", new Object[] { order, address, e });
+			code = CallbackCode.NETWORK_ERROR;
+			// 网络异常情况下需要到游戏服确认订单状态(游戏只确认不重新执行)
+			boolean test = isTest(oid, openid);
+			int gold = income / 10;
+			// 记录并准备进行充值重试
+			Charge entity = Charge.valueOfRetry(0, sid, order, ChargeType.ACCOUNT, openid, test, income, gold, addition, ChargeCode.SOCKET_ERROR, getNextRetryTime(0));
+			chargeRepository.save(oid, entity);
+			retryQueue.put(DelayedElement.valueOf(RetryCharge.valueOf(oid, sid, order), entity.getRetryTime()));
+
+			return Result.ERROR(code.getCode(), "网络异常 - " + e.getMessage());
+		} catch (Exception e) {
+			code = CallbackCode.PROGRAM_ERROR;
+			logger.error("订单[{}]未知的充值异常:", order, e);
+			return Result.ERROR(code.getCode(), "未知的充值异常 - " + e.getMessage());
+		}
+	}
+
+	// ----------- 交易物品回调 -----------
+
+	public Result<?> exchange(int oid, int sid, String openid, String seller_openid, String token, String billno,
+			Map<String, Integer> items, int pay, int fee, int fee_income, String detail) {
+		// 检查是否处理中订单
+		if (!tryAdd(oid, sid, billno)) {
+			if (logger.isWarnEnabled()) {
+				FormattingTuple message = MessageFormatter.arrayFormat("运营商[{}]服务器[{}]的BILLNO[{}]处理中", new Object[] {
+					oid, sid, token });
+				logger.warn(message.getMessage());
+			}
+			return Result.ERROR(CallbackCode.BUSY.getCode(), "处理中...");
+		}
+
+		try {
+			// 检查是否重复订单
+			if (chargeRepository.isExist(oid, sid, billno)) {
+				if (logger.isWarnEnabled()) {
+					FormattingTuple message = MessageFormatter.arrayFormat("运营商[{}]服务器[{}]的BILLNO[{}]重复", new Object[] {
+						oid, sid, token });
+					logger.warn(message.getMessage());
+				}
+				// 订单已存在，成功支付
+				return Result.ERROR(CallbackCode.CONSUME_SUCCESS.getCode(), "重复的BILLNO请求");
+			}
+			return doExchange(oid, sid, openid, seller_openid, token, billno, items, pay, fee, fee_income,
+					detail);
+		} finally {
+			release(oid, sid, billno);
+		}
+	}
+
+	/** 交易回调 */
+	@SuppressWarnings({ "rawtypes", "unchecked" })
+	private Result<?> doExchange(int oid, int sid, String openid, String seller_openid, String token, String billno,
+			Map<String, Integer> items, int pay, int fee, int fee_income, String detail) {
+		String address = getServerAddress(oid, sid);
+		CallbackCode code;
+		try {
+			// 发送充值请求
+			Client client = clientFactory.getClient(address, false);
+			Map<String, Object> requestBody = new HashMap<String, Object>(7);
+			requestBody.put("oid", oid);
+			requestBody.put("sid", sid);
+			requestBody.put("token", token);
+			requestBody.put("openid", openid);
+			requestBody.put("seller_openid", seller_openid);
+			requestBody.put("items", items);
+			requestBody.put("pay", pay);
+			requestBody.put("fee", fee);
+			requestBody.put("fee_income", fee_income);
+			requestBody.put("detail", detail);
+			Request<Map<String, Object>> request = Request.valueOf(CallbackCommand.PAY_TOKEN, requestBody);
+			Response response = client.send(request);
+			// 充值请求结果处理
+			if (response.hasError()) {
+				code = CallbackCode.PROGRAM_ERROR;
+				return Result.ERROR(code.getCode(), "程序异常 - " + request.getState());
+			} else {
+				Result<ChargeTarget> result = (Result<ChargeTarget>) response.getBody();
+				code = CallbackCode.valueOf(result.getCode());
+				if (code == null) {
+					return Result.ERROR(CallbackCode.PROGRAM_ERROR.getCode(), "未定义系统异常 - " + result.getCode());
+				}
+				// 充值成功, 记录充值记录
+				if (code == CallbackCode.SUCCESS) {
+					ChargeTarget target = result.getContent();
+					String info = target.getAddition();
+					boolean test = isTest(oid, openid);
+					int gold = fee_income / 10;
+					Charge entity = Charge.valueOfComplete(sid, billno, ChargeType.ACCOUNT, openid, test, fee_income,
+							gold, info, ChargeCode.DONE, target);
+					chargeRepository.save(oid, entity);
+					return Result.SUCCESS(target);
+				}
+				return Result.ERROR(code.getCode(), code.getMessage());
+			}
+		} catch (SocketException e) {
+			code = CallbackCode.NETWORK_ERROR;
+			if (logger.isWarnEnabled()) {
+				logger.warn("充值失败无法连接充值服[{}]", address, e);
+			}
+			return Result.ERROR(code.getCode(), "网络异常 - " + e.getMessage());
+		} catch (Exception e) {
+			code = CallbackCode.PROGRAM_ERROR;
+			logger.error("未知的充值异常:", e);
+			return Result.ERROR(code.getCode(), "未知的充值异常 - " + e.getMessage());
+		}
+	}
+
+	// ----------- 赠送物品回调 ------------
+
+	public Result<?> present(int oid, int sid, String openid, String token, String billno, Map<String, Integer> items,
+			String detail) {
+		// 检查是否处理中订单
+		if (!tryAdd(oid, sid, billno)) {
+			if (logger.isWarnEnabled()) {
+				FormattingTuple message = MessageFormatter.arrayFormat("运营商[{}]服务器[{}]的BILLNO[{}]处理中", new Object[] {
+					oid, sid, token });
+				logger.warn(message.getMessage());
+			}
+			return Result.ERROR(CallbackCode.BUSY.getCode(), "处理中...");
+		}
+
+		try {
+			return doPresent(oid, sid, openid, token, billno, items, detail);
+		} finally {
+			release(oid, sid, billno);
+		}
+	}
+
+	@SuppressWarnings({ "rawtypes", "unchecked" })
+	private Result<?> doPresent(int oid, int sid, String openid, String token, String billno,
+			Map<String, Integer> items, String addition) {
+		String address = getServerAddress(oid, sid);
+		CallbackCode code;
+		try {
+			// 发送充值请求
+			Client client = clientFactory.getClient(address, false);
+			Map<String, Object> requestBody = new HashMap<String, Object>(7);
+			requestBody.put("oid", oid);
+			requestBody.put("sid", sid);
+			requestBody.put("token", token);
+			requestBody.put("openid", openid);
+			requestBody.put("items", items);
+			requestBody.put("detail", addition);
+			Request<Map<String, Object>> request = Request.valueOf(CallbackCommand.PAY_TOKEN, requestBody);
+			Response response = client.send(request);
+			// 充值请求结果处理
+			if (response.hasError()) {
+				code = CallbackCode.PROGRAM_ERROR;
+				return Result.ERROR(code.getCode(), "程序异常 - " + request.getState());
+			} else {
+				Result<ChargeTarget> result = (Result<ChargeTarget>) response.getBody();
+				code = CallbackCode.valueOf(result.getCode());
+				if (code == null) {
+					return Result.ERROR(CallbackCode.PROGRAM_ERROR.getCode(), "未定义系统异常 - " + result.getCode());
+				}
+				// TODO 记录赠送记录
+				if (code == CallbackCode.SUCCESS) {
+					ChargeTarget target = result.getContent();
+					return Result.SUCCESS(target);
+				}
+				return Result.ERROR(code.getCode(), code.getMessage());
+			}
+		} catch (SocketException e) {
+			code = CallbackCode.NETWORK_ERROR;
+			if (logger.isWarnEnabled()) {
+				logger.warn("充值失败无法连接充值服[{}]", address, e);
+			}
+			return Result.ERROR(code.getCode(), "网络异常 - " + e.getMessage());
+		} catch (Exception e) {
+			code = CallbackCode.PROGRAM_ERROR;
+			logger.error("未知的充值异常:", e);
+			return Result.ERROR(code.getCode(), "未知的充值异常 - " + e.getMessage());
+		}
+	}
+
+	// ------------------------
+
+	/**
+	 * 获取服务器信息对象
+	 * @param operator 运营商对象
+	 * @param sid 服务器标识
+	 * @return
+	 */
+	private String getServerAddress(int oid, int sid) {
+		Server server = serverService.findServer(oid, sid);
+		if (server == null) {
+			throw new RequestForbiddenException("无效的服务器标识:[" + oid + "_" + sid + "]");
+		}
+		return server.getAddress();
+	}
+
+	/** 检查是否测试充值 */
+	private boolean isTest(int oid, String openid) {
+		Operator operator = serverService.getOperator(oid);
+		return operator.getTestAccounts().contains(openid);
+	}
+
+	/** 释放临时订单号 */
+	protected void release(int operatorId, int serverId, String billno) {
+		String name = operatorId + "_" + serverId + "_" + billno;
+		temporaries.remove(name);
+	}
+
+	/** 获取临时订单号集合 */
+	private boolean tryAdd(int operatorId, int serverId, String billno) {
+		String name = operatorId + "_" + serverId + "_" + billno;
+		return temporaries.add(name);
+	}
+	
+	/** 获取下次重试的时间 */
+	private Date getNextRetryTime(int times) {
+		int sec = config.getRetryInterval() * (times / config.getRetryTimes() + 1);
+		Calendar calendar = Calendar.getInstance();
+		calendar.add(Calendar.SECOND, sec);
+		return calendar.getTime();
+	}
+	
+	/**
+	 * 转换订单唯一标识
+	 * @param openId 
+	 * @param billno 
+	 * @return
+	 */
+	private String toOrder(String openId, String billno) {
+		return openId + "_" + billno;
+	}
+
+}

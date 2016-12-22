@@ -1,0 +1,17 @@
+package com.my9yu.charge.entity;
+
+import java.util.List;
+
+public class ChargeCollection {
+
+	private List<Charge> chargeList;
+
+	public List<Charge> getChargeList() {
+		return chargeList;
+	}
+
+	public void setChargeList(List<Charge> chargeList) {
+		this.chargeList = chargeList;
+	}
+	
+}

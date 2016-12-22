@@ -1,0 +1,96 @@
+package com.my9yu.charge.tencent.facade;
+
+import java.util.Map;
+
+import com.my9yu.charge.model.ChargeTarget;
+import com.my9yu.common.socket.anno.InBody;
+import com.my9yu.common.socket.anno.SocketCommand;
+import com.my9yu.common.socket.anno.SocketModule;
+import com.my9yu.common.utils.model.Result;
+
+/**
+ * 腾讯回调接口
+ * @author ramon
+ */
+@SocketModule(value = CallbackModule.MODULE, format = 1)
+public interface CallbackFacade {
+
+	/**
+	 * 支付发货
+	 * @param oid 运营商ID
+	 * @param sid 分区ID
+	 * @param openid 玩家OPENID
+	 * @param token TOKEN
+	 * @param income 人民币(分)
+	 * @param detail 回调详情
+	 * @return
+	 */
+	@SocketCommand(value = CallbackModule.PAY_TOKEN)
+	Result<ChargeTarget> pay(
+			@InBody("oid") int oid, 
+			@InBody("sid") int sid, 
+			@InBody("openid") String openid,
+			@InBody("token") String token, 
+			@InBody("income") int income, 
+			@InBody("detail") String detail);
+
+	/**
+	 * 寄售发货
+	 * @param oid 运营商ID
+	 * @param sid 分区ID
+	 * @param openid 玩家OPENID
+	 * @param seller_openid 出售玩家OPENID
+	 * @param token TOKEN
+	 * @param pay 购买价格人民币(分)
+	 * @param fee 佣金人民币(分)
+	 * @param fee_income 佣金收入人民币(分)
+	 * @param detail 回调详情
+	 * @return
+	 */
+	@SocketCommand(value = CallbackModule.EXCHANGE_TOKEN)
+	Result<ChargeTarget> exchange(
+			@InBody("oid") int oid, 
+			@InBody("sid") int sid, 
+			@InBody("openid") String openid,
+			@InBody("seller_openid") String seller_openid,
+			@InBody("token") String token, 
+			@InBody("pay") int pay, 
+			@InBody("fee") int fee, 
+			@InBody("fee_income") int fee_income, 
+			@InBody("detail") String detail);
+
+	/**
+	 * 赠送发货
+	 * @param oid 运营商ID
+	 * @param sid 分区ID
+	 * @param openid 玩家OPENID
+	 * @param token TOKEN
+	 * @param items <物品ID, 数量>
+	 * @param detail 回调详情
+	 * @return
+	 */
+	@SocketCommand(value = CallbackModule.PRESENT_TOKEN)
+	Result<ChargeTarget> present(
+			@InBody("oid") int oid, 
+			@InBody("sid") int sid, 
+			@InBody("openid") String openid,
+			@InBody("token") String token, 
+			@InBody("items") Map<String, Integer> items, 
+			@InBody("detail") String detail);
+	
+	/**
+	 * 充值状态确认(腾讯首次发货回调时发生网络异常，一定时间后发起充值状态确认，游戏服只返回相应订单状态不重新执行回调)
+	 * @param oid
+	 * @param sid
+	 * @param openid
+	 * @param billno
+	 * @return
+	 */
+	@SocketCommand(value = CallbackModule.ORDER_CHECK)
+	Result<CallbackCode> check(
+			@InBody("oid") int oid, 
+			@InBody("sid") int sid, 
+			@InBody("openid") String openid,
+			@InBody("billno") String billno);
+
+}

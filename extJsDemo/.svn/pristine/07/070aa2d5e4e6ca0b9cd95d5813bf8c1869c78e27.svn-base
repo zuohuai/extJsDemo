@@ -1,0 +1,43 @@
+package com.my9yu.charge.event;
+
+import com.my9yu.charge.entity.Charge;
+import com.my9yu.common.event.Event;
+
+/**
+ * 充值重试事件
+ * @author Frank
+ */
+public class RetryEvent {
+
+	/** 充值重试事件 */
+	public static final String NAME = "charge:retry";
+
+	/** 运营商标识 */
+	private int oid;
+	/** 服务器标识 */
+	private int sid;
+	/** 充值信息 */
+	private Charge entity;
+	
+	// Getter and Setter ...
+
+	public int getOid() {
+		return oid;
+	}
+
+	public int getSid() {
+		return sid;
+	}
+
+	public Charge getEntity() {
+		return entity;
+	}
+
+	public static Event<RetryEvent> valueOf(int oid, int sid, Charge entity) {
+		RetryEvent body = new RetryEvent();
+		body.oid = oid;
+		body.sid = sid;
+		body.entity = entity;
+		return Event.valueOf(NAME, body);
+	}
+}

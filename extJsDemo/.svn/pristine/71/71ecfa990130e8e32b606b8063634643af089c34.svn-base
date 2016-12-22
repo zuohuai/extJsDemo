@@ -1,0 +1,138 @@
+package com.my9yu.charge.ws.pay;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.ExceptionHandler;
+
+import com.my9yu.charge.admin.AdminConfig;
+import com.my9yu.charge.common.server.entity.Operator;
+import com.my9yu.charge.common.server.entity.Server;
+import com.my9yu.charge.common.server.service.ServerService;
+import com.my9yu.charge.service.ChargeService;
+import com.my9yu.charge.ws.exception.RequestForbiddenException;
+import com.my9yu.common.utils.codec.CryptUtils;
+
+/**
+ * 抽象充值接口
+ * @author Frank
+ */
+public abstract class AbstractPayController {
+
+	protected final Logger logger = LoggerFactory.getLogger(this.getClass());
+
+	@Autowired
+	protected ServerService serverService;
+	@Autowired
+	protected ChargeService chargeService;
+	@Autowired
+	protected AdminConfig adminConfig;
+
+	/** 检查是否有效的签名信息 */
+	protected void chkSign(String key, String sign, String... params) {
+		StringBuffer sb = new StringBuffer();
+		for (String s : params) {
+			sb.append(s);
+		}
+		sb.append(key);
+		boolean valid = false;
+		try {
+			String str = CryptUtils.md5(sb.toString());
+			if (str.equalsIgnoreCase(sign)) {
+				valid = true;
+			}
+		} catch (Exception e) {
+		}
+		if (!valid) {
+			throw new RequestForbiddenException("无效的签名信息");
+		}
+	}
+
+	/**
+	 * 检查充值信息是否合法
+	 * @param operator 运营商对象
+	 * @param money 充值金额
+	 * @param gold 充值金币
+	 * @param addition 充值附加信息
+	 * @return true:合法, false:非法
+	 */
+	protected boolean isValidChargeInfo(Operator operator, int money, int gold, String addition) {
+		if (money <= 0) {
+			return false;
+		}
+		if (gold < 0 && !operator.isAddition()) {
+			return false;
+		}
+		if (addition != null && !operator.isAddition()) {
+			return false;
+		}
+		return true;
+	}
+
+	/**
+	 * 检查访问IP是否合法
+	 * @param operator 运营商对象
+	 * @param ip 访问IP
+	 */
+	protected void chkRemoteAddr(Operator operator, String ip) {
+		if (!adminConfig.isAllowIp(ip)) {
+			if (!operator.isAllow(ip)) {
+				throw new RequestForbiddenException("无效的访问地址:" + ip);
+			}
+		}
+	}
+
+	/**
+	 * 获取服务器信息对象
+	 * @param operator 运营商对象
+	 * @param sid 服务器标识
+	 * @return
+	 */
+	protected Server getServer(Operator operator, Integer sid) {
+		Server server = serverService.findServer(operator.getId(), sid);
+		if (server == null) {
+			throw new RequestForbiddenException("无效的服务器标识:" + sid);
+		}
+		return server;
+	}
+
+	/* protected Server getServer(Operator operator, String address) { Server server =
+	 * operator.getAddressToServerMap().get(address); if (server == null) { throw new
+	 * RequestForbiddenException("无效的服务器标识:" + address); } return server; } */
+
+	/**
+	 * 获取运营商对象
+	 * @param oid 运营商标识
+	 * @return
+	 */
+	protected Operator getOperator(int oid) {
+		Operator operator = serverService.getOperator(oid);
+		if (operator == null) {
+			throw new RequestForbiddenException("无效的运营商标识:" + oid);
+		}
+		return operator;
+	}
+
+	/** 不允许访问 */
+	@SuppressWarnings("rawtypes")
+	@ExceptionHandler({ RequestForbiddenException.class })
+	public ResponseEntity forbidden(RequestForbiddenException ex) {
+		if (logger.isWarnEnabled()) {
+			logger.warn(ex.getMessage());
+		}
+		return new ResponseEntity(HttpStatus.FORBIDDEN);
+	}
+
+	/** 无效的请求 */
+	@SuppressWarnings("rawtypes")
+	@ExceptionHandler({ IllegalArgumentException.class })
+	public ResponseEntity badRequest(IllegalArgumentException ex) {
+		if (logger.isWarnEnabled()) {
+			logger.warn(ex.getMessage());
+		}
+		return new ResponseEntity(HttpStatus.BAD_REQUEST);
+	}
+
+}

@@ -1,0 +1,292 @@
+package com.my9yu.charge.common.server.entity;
+
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
+import java.util.regex.Pattern;
+
+import org.apache.commons.lang3.StringUtils;
+import org.springframework.data.annotation.Id;
+import org.springframework.data.annotation.Transient;
+import org.springframework.data.mongodb.core.index.Indexed;
+import org.springframework.data.mongodb.core.mapping.Document;
+
+import com.my9yu.charge.common.server.model.OperatorInfo;
+import com.my9yu.common.utils.json.JsonUtils;
+
+/**
+ * 一个运营商可以 绑定多个服务器 {@link Server} 一个 {@link GameInstance} 可以绑定多个 {@link Server}
+ */
+@Document
+public class Operator {
+
+	/** 运营商标识 */
+	@Id
+	private int id;
+
+	/** 运营商名 */
+	@Indexed
+	private String name;
+
+	/** 运营商昵称 */
+	private String nick;
+
+	/** 其他信息 */
+	private String informations;
+
+	/** 登陆标识 */
+	private String loginId;
+	/** 登陆密匙 */
+	private String loginKey;
+	/** 登陆地址 */
+	private String loginUrl;
+
+	/** 充值通信密匙 */
+	private String key;
+	/** 是否自动补单 */
+	private boolean retry;
+	/** 是否支持附加充值信息 */
+	private boolean addition;
+	/** 运营商许可IP */
+	private List<String> allowIps = new ArrayList<String>();
+	/** 运营商登录白名单IP */
+	private List<String> whiteIps = new ArrayList<String>();
+	/** 测试充值帐号(使按帐号充值不产生充值记录) */
+	private Set<String> testAccounts = new HashSet<String>();
+	/** 测试充值角色名(使按角色充值不产生充值记录) */
+	private Set<String> testPlayers = new HashSet<String>();
+	/** 测试充值标识(使按标识充值不产生充值记录) */
+	private Set<String> testTargets = new HashSet<String>();
+
+	private long createTime;
+	/** 创建时间 */
+
+	@Transient
+	private transient volatile List<Pattern> regexs;
+
+	@Transient
+	private OperatorInfo operatorInfo;
+
+	public static Operator valueOfCharge(int id, String name, String nick, String informations, String loginId,
+			String loginKey, String loginUrl, String key, boolean addition, List<String> allowIps,
+			Set<String> testAccounts, Set<String> testPlayers, Set<String> testTargets, long createTime, boolean retry) {
+		Operator result = new Operator();
+		result.id = id;
+		result.name = name;
+		result.nick = nick;
+		result.informations = informations;
+		result.loginId = loginId;
+		result.loginKey = loginKey;
+		result.loginUrl = loginUrl;
+		result.key = key;
+		result.retry = retry;
+		result.addition = addition;
+		result.allowIps = allowIps;
+		// result.whiteIps = whiteIps;
+		result.testAccounts = testAccounts;
+		result.testPlayers = testPlayers;
+		result.testTargets = testTargets;
+		result.createTime = createTime;
+		return result;
+	}
+
+	// 手动初始化
+	public void init() {
+		if (informations == null)
+			informations = "{}";
+		operatorInfo = JsonUtils.string2Object(informations, OperatorInfo.class);
+	}
+
+	public void serializeInfo() {
+		informations = JsonUtils.object2String(operatorInfo);
+	}
+
+	public Operator() {
+	}
+
+
+	
+	//set get		
+	
+	public long getCreateTime() {
+		return createTime;
+	}
+
+	public void setCreateTime(long createTime) {
+		this.createTime = createTime;
+	}
+
+	public OperatorInfo info() {
+		return operatorInfo;
+	}
+
+	public String getLoginId() {
+		return loginId;
+	}
+
+	public void setLoginId(String loginId) {
+		this.loginId = loginId;
+	}
+
+	public String getLoginKey() {
+		return loginKey;
+	}
+
+	public void setLoginKey(String loginKey) {
+		this.loginKey = loginKey;
+	}
+
+	public String getLoginUrl() {
+		return loginUrl;
+	}
+
+	public void setLoginUrl(String loginUrl) {
+		this.loginUrl = loginUrl;
+	}
+
+	public Operator(int id) {
+		this.id = id;
+	}
+
+	public String getKey() {
+		return key;
+	}
+
+	public void setKey(String key) {
+		this.key = key;
+	}
+
+	public boolean isRetry() {
+		// XXX 强制打开所有运营商自动补单
+		return true;
+	}
+
+	public void setRetry(boolean retry) {
+		this.retry = retry;
+	}
+
+	public boolean isAddition() {
+		return addition;
+	}
+
+	public void setAddition(boolean addition) {
+		this.addition = addition;
+	}
+	
+	public List<String> getWhiteIps() {
+		return whiteIps;
+	}
+	
+	public void setWhiteIps(List<String> whiteIps) {
+		this.whiteIps = whiteIps;
+	}
+
+	public List<String> getAllowIps() {
+		return allowIps;
+	}
+
+	public void setAllowIps(List<String> allowIps) {
+		this.allowIps = allowIps;
+		this.regexs = null;
+	}
+
+	public Set<String> getTestAccounts() {
+		return testAccounts;
+	}
+
+	public void setTestAccounts(Set<String> testAccounts) {
+		this.testAccounts = testAccounts;
+	}
+
+	public Set<String> getTestPlayers() {
+		return testPlayers;
+	}
+
+	public void setTestPlayers(Set<String> testPlayers) {
+		this.testPlayers = testPlayers;
+	}
+
+	public Set<String> getTestTargets() {
+		return testTargets;
+	}
+
+	public void setTestTargets(Set<String> testTargets) {
+		this.testTargets = testTargets;
+	}
+
+	public List<Pattern> getRegexs() {
+		return regexs;
+	}
+
+	public void setRegexs(List<Pattern> regexs) {
+		this.regexs = regexs;
+	}
+
+	public int getId() {
+		return id;
+	}
+
+	public void setId(int id) {
+		this.id = id;
+	}
+
+	public String getNick() {
+		return nick;
+	}
+
+	public void setNick(String nick) {
+		this.nick = nick;
+	}
+
+	public String getName() {
+		return name;
+	}
+
+	public void setName(String name) {
+		this.name = name;
+	}
+
+	public String getInformations() {
+		return informations;
+	}
+
+	public void setInformations(String informations) {
+		this.informations = informations;
+	}
+
+	/**
+	 * 检查指定IP是否被许可
+	 * @param ip IPV4格式
+	 * @return
+	 */
+	public boolean isAllow(String ip) {
+		List<Pattern> patterns = regexs;
+		if (patterns == null) {
+			synchronized (this) {
+				patterns = regexs;
+				if (patterns == null) {
+					patterns = new ArrayList<Pattern>(allowIps.size());
+					for (String s : allowIps.toArray(new String[0])) {
+						if (StringUtils.isBlank(s)) {
+							continue;
+						}
+						String str = s.replace(".", "[.]").replace("*", "[0-9]*");
+						patterns.add(Pattern.compile(str));
+					}
+					regexs = patterns;
+				}
+			}
+		}
+		// 检查IP是否合法
+		for (Pattern regex : patterns) {
+			if (regex.matcher(ip).matches()) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+
+
+}

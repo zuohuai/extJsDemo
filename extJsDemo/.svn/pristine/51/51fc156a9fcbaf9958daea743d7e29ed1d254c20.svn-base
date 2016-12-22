@@ -1,0 +1,15 @@
+package com.my9yu.charge.entity;
+
+/**
+ * 充值类型
+ * @author Frank
+ */
+public enum ChargeType {
+
+	/** 按帐号充值帐号 */
+	ACCOUNT,
+	/** 按角色名充值 */
+	PLAYER,
+	/** 按目标标识充值 */
+	TARGET;
+}

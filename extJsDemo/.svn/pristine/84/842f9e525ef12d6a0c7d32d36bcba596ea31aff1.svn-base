@@ -1,0 +1,182 @@
+package com.my9yu.charge.repository;
+
+import static org.springframework.data.mongodb.core.query.Criteria.where;
+
+import java.util.Collections;
+import java.util.Date;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
+
+import javax.annotation.PostConstruct;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.mongodb.core.MongoTemplate;
+import org.springframework.data.mongodb.core.query.Criteria;
+import org.springframework.data.mongodb.core.query.Query;
+import org.springframework.stereotype.Repository;
+
+import com.my9yu.charge.entity.Charge;
+import com.my9yu.charge.entity.ChargeState;
+import com.my9yu.charge.utils.MongoHelper;
+
+/**
+ * 充值记录 DAO
+ * @author Frank
+ */
+@Repository
+@SuppressWarnings("unchecked")
+public class ChargeRepository {
+
+	@Autowired
+	private MongoTemplate mongoTemplate;
+
+	// 优化查询表名
+	private Map<String, Object> _cacheMongoCollects = new ConcurrentHashMap<String, Object>();
+	private ReentrantReadWriteLock rwLock = new ReentrantReadWriteLock();
+
+	@PostConstruct
+	private void init() {
+		for (String collection : mongoTemplate.getCollectionNames()) {
+			_cacheMongoCollects.put(collection, new Object());
+		}
+	}
+
+	private boolean canCollection(String collection) {
+		Lock lock = rwLock.readLock();
+		lock.lock();
+		try {
+			return _cacheMongoCollects.containsKey(collection);
+
+		} finally {
+			lock.unlock();
+		}
+	}
+
+	/**
+	 * 检查指定订单号的充值记录是否存在
+	 * @param collection 数据集名
+	 * @param order 订单号
+	 * @return
+	 */
+	public boolean isExist(int operatorId, int serverId, String order) {
+		String collection = Charge.toCollectionName(operatorId);
+		if (!canCollection(collection)) {
+			return false;
+		}
+
+		long count1 = mongoTemplate.count(Query.query(where("_id").is(Charge.toChargeId(serverId, order))), collection);
+		if(count1 > 0) {
+			return true;
+		}
+		
+		String order2 = operatorId + "_" + serverId + "_" + order;
+		long count2 = mongoTemplate.count(Query.query(where("_id").is(Charge.toChargeId(serverId, order2))), collection);
+		if(count2 > 0) {
+			return true;
+		}
+		return false;
+	}
+
+	/**
+	 * 持久化充值记录到指定数据集
+	 * @param collection 数据集名
+	 * @param entity 充值记录
+	 */
+	public void save(int operatorId, Charge entity) {
+		String collection = Charge.toCollectionName(operatorId);
+		if (!canCollection(collection)) {
+			createCollection(collection);
+		}
+		mongoTemplate.save(entity, collection);
+	}
+
+	/**
+	 * 获取指定的充值记录实体
+	 * @param collection 数据集名
+	 * @param order 订单号
+	 * @return
+	 */
+	public Charge get(int operatorId, int server, String order) {
+		String collection = Charge.toCollectionName(operatorId);
+		if (!canCollection(collection)) {
+			return null;
+		}
+		return mongoTemplate.findById(Charge.toChargeId(server, order), Charge.class, collection);
+	}
+
+	/** 获取指定时间点之后的完成记录 */
+	public List<Charge> findCompleteAfter(int operatorId, long time) {
+		String collection = Charge.toCollectionName(operatorId);
+		if (!canCollection(collection)) {
+			return Collections.EMPTY_LIST;
+		}
+		Query query = Query.query(where("state").is(ChargeState.COMPLETE).and("completeTime").gt(new Date(time)));
+		return mongoTemplate.find(query, Charge.class, collection);
+	}
+
+	/** 获取指定时间点之间的完成记录 */
+	public List<Charge> findCompleteBetween(int operatorId, long begin, long end) {
+		String collection = Charge.toCollectionName(operatorId);
+		if (!canCollection(collection)) {
+			return Collections.EMPTY_LIST;
+		}
+
+		Criteria criteria = new Criteria();
+
+		criteria.and("state").is(ChargeState.COMPLETE).and("test").is(false)
+				.andOperator(where("completeTime").gte(new Date(begin)), where("completeTime").lt(new Date(end)));
+
+		return mongoTemplate.find(new Query(criteria), Charge.class, collection);
+	}
+
+	/** 获取全部等待状态的记录 */
+	public List<Charge> findWait(int operatorId) {
+		String collection = Charge.toCollectionName(operatorId);
+		if (!canCollection(collection)) {
+			return Collections.EMPTY_LIST;
+		}
+		Query query = Query.query(where("state").is(ChargeState.WAIT));
+		return mongoTemplate.find(query, Charge.class, collection);
+	}
+
+	public void remove(int operatorId, int server, String order) {
+		Query query = Query.query(where("_id").is(order));
+		mongoTemplate.remove(query, Charge.toChargeId(server, order));
+	}
+
+	// 内部方法
+
+	/** 移除数据集 */
+	protected void drop(String collection) {
+		Lock lock = rwLock.writeLock();
+		lock.lock();
+		try {
+			mongoTemplate.dropCollection(collection);
+			_cacheMongoCollects.remove(collection);
+		} finally {
+			lock.unlock();
+		}
+
+	}
+
+	/** 创建数据集 */
+	private synchronized void createCollection(String collection) {
+		if (canCollection(collection)) {
+			return;
+		}
+
+		Lock lock = rwLock.writeLock();
+		lock.lock();
+		try {
+			_cacheMongoCollects.put(collection, new Object());
+			MongoHelper.buildCollection(mongoTemplate, collection, Charge.class);
+			System.out.println("created Collection : " + collection);
+		} finally {
+			lock.unlock();
+		}
+	}
+
+}

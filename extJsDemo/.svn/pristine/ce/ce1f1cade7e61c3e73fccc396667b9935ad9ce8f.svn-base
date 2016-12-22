@@ -1,0 +1,28 @@
+package com.my9yu.charge.common.server.model;
+
+import java.util.Set;
+
+public class MergeServerVO {
+	
+	private String newAddress;
+	
+	private Set<String> mergeAddress;
+
+	public String getNewAddress() {
+		return newAddress;
+	}
+
+	public void setNewAddress(String newAddress) {
+		this.newAddress = newAddress;
+	}
+
+	public Set<String> getMergeAddress() {
+		return mergeAddress;
+	}
+
+	public void setMergeAddress(Set<String> mergeAddress) {
+		this.mergeAddress = mergeAddress;
+	}
+	
+	
+}

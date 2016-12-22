@@ -1,0 +1,25 @@
+package com.my9yu.charge.common.server.model;
+
+import java.util.Set;
+
+public class ChargeTestAccountVo {
+	private Set<String> accounts;
+	private int operator;
+
+	public Set<String> getAccounts() {
+		return accounts;
+	}
+
+	public void setAccounts(Set<String> accounts) {
+		this.accounts = accounts;
+	}
+
+	public int getOperator() {
+		return operator;
+	}
+
+	public void setOperator(int operator) {
+		this.operator = operator;
+	}
+
+}

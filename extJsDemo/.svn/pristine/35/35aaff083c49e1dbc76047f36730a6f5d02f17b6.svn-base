@@ -1,0 +1,115 @@
+package com.my9yu.tencent.entity;
+
+import java.util.Date;
+
+import org.springframework.data.annotation.Id;
+import org.springframework.data.mongodb.core.index.Indexed;
+import org.springframework.data.mongodb.core.mapping.Document;
+
+import com.my9yu.tencent.model.ZoneInfo.TaskState;
+
+/**
+ * 任务集市信息
+ * @author ChenJia@my9yu.com
+ * @date 2014-4-8
+ */
+@Document
+public class Task {
+
+	// 基础信息
+	@Id
+	private String id;
+
+	@Indexed
+	private String openid;
+
+	private String contractid;
+
+	private int step;
+
+	private int oid;
+
+	private int sid;
+
+	private TaskState state;
+
+	private Date update;
+
+	public String getId() {
+		return id;
+	}
+
+	public void setId(String id) {
+		this.id = id;
+	}
+
+	public String getOpenid() {
+		return openid;
+	}
+
+	public void setOpenid(String openid) {
+		this.openid = openid;
+	}
+
+	public String getContractid() {
+		return contractid;
+	}
+
+	public void setContractid(String contractid) {
+		this.contractid = contractid;
+	}
+
+	public int getStep() {
+		return step;
+	}
+
+	public void setStep(int step) {
+		this.step = step;
+	}
+
+	public int getOid() {
+		return oid;
+	}
+
+	public void setOid(int oid) {
+		this.oid = oid;
+	}
+
+	public int getSid() {
+		return sid;
+	}
+
+	public void setSid(int sid) {
+		this.sid = sid;
+	}
+
+	public TaskState getState() {
+		return state;
+	}
+
+	public void setState(TaskState state) {
+		this.state = state;
+	}
+
+	public Date getUpdate() {
+		return update;
+	}
+
+	public void setUpdate(Date update) {
+		this.update = update;
+	}
+
+	public static Task valueOf(String id, String openid, String contractid, int step, int oid, int sid, TaskState state,
+			Date update) {
+		Task result = new Task();
+		result.id = id;
+		result.openid = openid;
+		result.contractid = contractid;
+		result.step = step;
+		result.oid = oid;
+		result.sid = sid;
+		result.state = state;
+		result.update = update;
+		return result;
+	}
+}

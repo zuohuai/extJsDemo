@@ -1,0 +1,273 @@
+package com.my9yu.charge.admin;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Set;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.stereotype.Controller;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestMethod;
+import org.springframework.web.bind.annotation.ResponseBody;
+
+import com.my9yu.charge.common.server.entity.GameInstance;
+import com.my9yu.charge.common.server.entity.Operator;
+import com.my9yu.charge.common.server.entity.Server;
+import com.my9yu.charge.common.server.model.ChargeErrorCode;
+import com.my9yu.charge.common.server.model.CopyServerData;
+import com.my9yu.charge.common.server.model.MergeServerVO;
+import com.my9yu.charge.common.server.model.OperatorVO;
+import com.my9yu.charge.common.server.service.ServerService;
+import com.my9yu.common.utils.json.JsonUtils;
+
+@Controller
+public class OperatorServersController {
+
+	// private static final Logger logger = LoggerFactory.getLogger(OperatorServersController.class);
+
+	@Autowired
+	private ServerService service;
+
+	/** 复制运营商、服务器、游戏实例列表 */
+	@RequestMapping(value = "operators/api-server-copy", method = RequestMethod.POST)
+	public ResponseEntity<Object> copyOperators(@RequestBody String json) {
+		try {
+			CopyServerData data = JsonUtils.string2Object(json, CopyServerData.class);
+
+			service.clearAll();
+			for (Operator operator : data.getOperatorList()) {
+				service.saveOrUpdateOperator(operator);
+			}
+
+			for (Server server : data.getServerList()) {
+				service.addServer(server.getOperator(), server.getServer(), server.getAddress(), server.getName(),
+						server.getInformations(), server.getCreateTime(), server.getStartTime());
+			}
+
+			for (GameInstance gameInstance : data.getGameInstanceList()) {
+				service.addCacheGameInstance(gameInstance);
+			}
+
+		} catch (Exception e) {
+			return new ResponseEntity<Object>(ChargeErrorCode.JSON_ERROR, HttpStatus.OK);
+		}
+
+		return new ResponseEntity<Object>(ChargeErrorCode.SUCCESS, HttpStatus.OK);
+
+	}
+
+	/** 添加运营商信息 */
+	@RequestMapping(value = "operators/{operatorId}/api-operator", method = RequestMethod.POST)
+	public ResponseEntity<Object> createOperator(@RequestBody String json) {
+		OperatorVO entity;
+		try {
+			entity = JsonUtils.string2Object(json, OperatorVO.class);
+		} catch (Exception e) {
+			return new ResponseEntity<Object>(ChargeErrorCode.JSON_ERROR, HttpStatus.OK);
+		}
+
+		Operator current = service.getOperator(entity.getId());
+		if (current != null) {
+			return new ResponseEntity<Object>(ChargeErrorCode.CREATED, HttpStatus.OK);
+		}
+		final Operator operator = entity.addChargeOperator();
+		service.saveOrUpdateOperator(operator);
+		return new ResponseEntity<Object>(ChargeErrorCode.SUCCESS, HttpStatus.OK);
+
+	}
+
+	/** 更新运营商信息 */
+	@RequestMapping(value = "operators/{operatorId}/api-operator", method = RequestMethod.PUT)
+	public ResponseEntity<Object> updateOperator(@RequestBody String json) {
+		OperatorVO entity;
+		try {
+			entity = JsonUtils.string2Object(json, OperatorVO.class);
+		} catch (Exception e) {
+			return new ResponseEntity<Object>(ChargeErrorCode.JSON_ERROR, HttpStatus.OK);
+		}
+		Operator current = service.getOperator(entity.getId());
+		if (current == null) {
+			return new ResponseEntity<Object>(ChargeErrorCode.NOT_FIND_OPERATOR, HttpStatus.OK);
+		}
+		entity.updateChargeOperator(current);
+		service.saveOrUpdateOperator(current);
+		return new ResponseEntity<Object>(ChargeErrorCode.SUCCESS, HttpStatus.OK);
+
+	}
+
+	/** 删除运营商信息 */
+	@RequestMapping(value = "operators/{operatorId}/api-operator", method = RequestMethod.DELETE)
+	public ResponseEntity<Object> removeOperator(@PathVariable int operatorId) {
+		service.deleteOperator(operatorId);
+		return new ResponseEntity<Object>(ChargeErrorCode.SUCCESS, HttpStatus.OK);
+	}
+
+	// end
+
+	/** 添加服务器信息 */
+	@RequestMapping(value = "operators/{operatorId}/{address}/api-server", method = RequestMethod.POST)
+	public ResponseEntity<Object> createServer(@PathVariable int operatorId, @RequestBody String json) {
+		final Operator operator = service.getOperator(operatorId);
+		if (operator == null) {
+			return new ResponseEntity<Object>(ChargeErrorCode.NOT_FIND_OPERATOR, HttpStatus.OK);
+		}
+		final Server entity;
+		try {
+			entity = JsonUtils.string2Object(json, Server.class);
+		} catch (Exception e) {
+			return new ResponseEntity<Object>(ChargeErrorCode.JSON_ERROR, HttpStatus.OK);
+		}
+		boolean flag = service.checkCacheGameInstance(entity.getAddress());
+		if (!flag)
+			return new ResponseEntity<Object>(ChargeErrorCode.NOT_FIND_GAMEINSTANCE, HttpStatus.OK);
+
+		service.addServer(operatorId, entity.getServer(), entity.getAddress(), entity.getName(), entity.getId(),
+				entity.getCreateTime(), entity.getStartTime());
+		return new ResponseEntity<Object>(ChargeErrorCode.SUCCESS, HttpStatus.OK);
+
+	}
+
+	/** 更新服务器信息 */
+	// @RequestMapping(value = "operators/{operatorId}/{address}/api-server", method = RequestMethod.PUT)
+	// public ResponseEntity<Object> updateServer(@PathVariable int operatorId, @RequestBody String json) {
+	// final Operator operator = service.getOperator(operatorId);
+	// if (operator == null) {
+	// return new ResponseEntity<Object>(ErrorCode.NOT_FIND_OPERATOR, HttpStatus.OK);
+	// }
+	// final Server entity = JsonUtils.string2Object(json, Server.class);
+	// if (!operator.getServerCollection().contains(entity)) {
+	// return new ResponseEntity<Object>(ErrorCode.NOT_FIND_SERVER, HttpStatus.OK);
+	// }
+	// final Server server = operator.getAddressToServerMap().get(entity.getAddress());
+	// server.setName(entity.getName());
+	// server.setInformations(entity.getInformations());
+	//
+	// service.saveOrUpdateOperator(operator);
+	// return new ResponseEntity<Object>(ChargeErrorCode.SUCCESS,HttpStatus.OK);
+	// }
+
+	// /** 删除服务器信息 */
+	// @RequestMapping(value = "operators/{operatorId}/{server}/api-server", method = RequestMethod.DELETE)
+	// public ResponseEntity<Object> removeServer(@PathVariable int operatorId, @PathVariable Integer server) {
+	// final Operator operator = service.getOperator(operatorId);
+	// if (operator == null) {
+	// return new ResponseEntity<Object>(ChargeErrorCode.NOT_FIND_OPERATOR, HttpStatus.OK);
+	// }
+	// service.removeServer(operatorId, server);
+	// return new ResponseEntity<Object>(ChargeErrorCode.SUCCESS, HttpStatus.OK);
+	// }
+
+	/** 删除服务器信息 */
+	@RequestMapping(value = "operators/{operatorId}/{server}/api-server-delete", method = RequestMethod.DELETE)
+	public ResponseEntity<Object> removeServer(@PathVariable int operatorId, @PathVariable int server) {
+		final Operator operator = service.getOperator(operatorId);
+		if (operator == null) {
+			return new ResponseEntity<Object>(ChargeErrorCode.NOT_FIND_OPERATOR, HttpStatus.OK);
+		}
+		service.removeServer(operatorId, server);
+		return new ResponseEntity<Object>(ChargeErrorCode.SUCCESS, HttpStatus.OK);
+	}
+
+	/**
+	 * 合并服务器
+	 */
+
+	@RequestMapping(value = "operators/{operatorId}/api-server-merge", method = RequestMethod.POST)
+	public ResponseEntity<Object> mergeServer(@PathVariable int operatorId, @RequestBody String json) {
+ 
+		final MergeServerVO entity;
+		try {
+			entity = JsonUtils.string2Object(json, MergeServerVO.class);
+		} catch (Exception e) {
+			return new ResponseEntity<Object>(ChargeErrorCode.JSON_ERROR, HttpStatus.OK);
+		}
+
+		service.mergeServer(entity.getNewAddress(), entity.getMergeAddress());
+		return new ResponseEntity<Object>(ChargeErrorCode.SUCCESS, HttpStatus.OK);
+
+	}
+
+	// end
+
+	// select
+	// @RequestMapping(value = "all-operators", method = RequestMethod.GET)
+	// @ResponseBody
+	// public ResponseEntity<List<AllOperatorVO>> getAllOperators() {
+	// List<AllOperatorVO> result = new ArrayList<AllOperatorVO>();
+	// for (Operator operator : service.allOperator()) {
+	// result.add(new AllOperatorVO(operator));
+	// }
+	// return new ResponseEntity<List<AllOperatorVO>>(result, HttpStatus.OK);
+	// }
+
+	/** 获得当前的运营商信息 */
+	// @RequestMapping(value = "servers", method = RequestMethod.GET)
+	// public @ResponseBody
+	// List<Server> listServersByAccount(HttpSession session) {
+	// final int operatorId = HttpSessionHelper.getAttribute(session, Sessions.OPERATOR, String.class);
+	//
+	// List<Server> result = new ArrayList<Server>();
+	// Operator operator = service.getOperator(operatorId);
+	// if (operator == null) {
+	// return result;
+	// }
+	// result.addAll(operator.getAddressToServerMap().values());
+	// return result;
+	// }
+
+	/** 获得全部的运营商信息 */
+	@RequestMapping(value = "operators", method = RequestMethod.GET)
+	public @ResponseBody
+	Set<Operator> listOperators() {
+		Set<Operator> operators = service.allOperator();
+		return operators;
+	}
+
+	/** 获取指定运营商的全部服务器 */
+	@RequestMapping(value = "operators/{operatorId}/api-server", method = RequestMethod.GET)
+	public @ResponseBody
+	List<Server> listServersByOperator(@PathVariable int operatorId) {
+		List<Server> result = new ArrayList<Server>();
+		Operator operator = service.getOperator(operatorId);
+		if (operator == null) {
+			return result;
+		}
+		result.addAll(service.allServers(operatorId, true));
+		return result;
+	}
+
+	/** 获取运营商信息 */
+	@RequestMapping(value = "operators/{operatorId}", method = RequestMethod.GET)
+	public ResponseEntity<OperatorVO> getOperator(@PathVariable int operatorId) {
+		final Operator operator = service.getOperator(operatorId);
+		HttpStatus status = null;
+		if (operator == null) {
+			status = HttpStatus.NOT_FOUND;
+		} else {
+			status = HttpStatus.OK;
+		}
+		return new ResponseEntity<OperatorVO>(new OperatorVO(operator), status);
+	}
+
+	// /** 获取服务器信息 */
+	// @RequestMapping(value = "operators/{operatorId}/servers/{address}", method = RequestMethod.GET)
+	// public ResponseEntity<Object> getServers(@PathVariable int operatorId, @PathVariable String address) {
+	// final Operator operator = service.getOperator(operatorId);
+	// if (operator == null) {
+	// return new ResponseEntity<Object>(ChargeErrorCode.NOT_FIND_OPERATOR, HttpStatus.OK);
+	// }
+	// final Server server = operator.getAddressToServerMap().get(address);
+	// HttpStatus status = null;
+	// if (server == null) {
+	// status = HttpStatus.OK;
+	// } else {
+	// status = HttpStatus.OK;
+	// }
+	// return new ResponseEntity<Object>(server, status);
+	// }
+
+}

@@ -1,0 +1,68 @@
+package com.my9yu.charge.admin;
+
+import static org.hamcrest.CoreMatchers.is;
+import static org.junit.Assert.assertThat;
+
+import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.test.context.ContextConfiguration;
+import org.springframework.test.context.junit4.SpringJUnit4ClassRunner;
+
+import com.my9yu.charge.common.server.entity.Operator;
+
+@RunWith(SpringJUnit4ClassRunner.class)
+@ContextConfiguration(locations = "classpath:/test-context.xml")
+@SuppressWarnings("rawtypes")
+public class OperatorControllerTest {
+
+//	@Autowired private OperatorController controller;
+	
+	private String name = "test";
+	
+	@Test
+	public void test_create() {
+/*		Operator operator = new Operator();
+		operator.setName(name);
+		operator.setKey("testKey");
+		ResponseEntity response = controller.(operator);
+		assertThat(response.getStatusCode(), is(HttpStatus.OK));*/
+	}
+	
+	@Test
+	public void test_get() {
+//		ResponseEntity<Operator> response = controller.getOperator(name);
+//		Operator operator = response.getBody();
+//		assertThat(operator.getName(), is("test"));
+	}
+
+	@Test
+	public void test_update() {
+/*		OperatorInfo operator = OperatorInfo.valueOf(controller.get(name).getBody());
+		
+		operator.setAddition(true);
+		operator.setRetry(true);
+		Collections.addAll(operator.getAllowIps(), "127.0.0.1");
+		Collections.addAll(operator.getTestAccounts(), "account");
+		Collections.addAll(operator.getTestPlayers(), "player");
+		Collections.addAll(operator.getTestTargets(), "target");
+		
+		ResponseEntity response = controller.update(name, operator);
+		assertThat(response.getStatusCode(), is(HttpStatus.OK));
+		
+		ResponseEntity<Operator> chkResponse = controller.get(name);
+		Operator chk = chkResponse.getBody();
+		assertThat(chk.isAddition(), is(true));*/
+	}
+	
+	@Test
+	public void test_delete() {
+//		ResponseEntity response = controller.deleteOperator(name);
+//		assertThat(response.getStatusCode(), is(HttpStatus.OK));
+//		
+//		response = controller.getOperator(name);
+//		assertThat(response.getStatusCode(), is(HttpStatus.NOT_FOUND));
+	}
+}

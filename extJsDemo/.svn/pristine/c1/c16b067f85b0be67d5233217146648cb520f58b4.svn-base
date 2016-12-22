@@ -1,0 +1,96 @@
+package com.my9yu.charge.utils;
+
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.Map.Entry;
+
+import org.springframework.data.mongodb.core.IndexOperations;
+import org.springframework.data.mongodb.core.MongoTemplate;
+import org.springframework.data.mongodb.core.index.CompoundIndex;
+import org.springframework.data.mongodb.core.index.CompoundIndexes;
+import org.springframework.data.mongodb.core.index.Index;
+import org.springframework.data.mongodb.core.index.IndexInfo;
+import org.springframework.data.mongodb.core.query.Order;
+
+import com.mongodb.DBCollection;
+import com.my9yu.common.utils.collection.ConcurrentHashSet;
+import com.my9yu.common.utils.json.JsonUtils;
+
+public class MongoHelper {
+
+	private static ConcurrentHashSet<String> collecionNames = new ConcurrentHashSet<String>();
+
+	@SuppressWarnings("unchecked")
+	public static void buildIndexs(MongoTemplate mongoTemplate, String collectionName, CompoundIndexes compoundIndexes) {
+		if (compoundIndexes == null) {
+			return;
+		}
+
+		final DBCollection collection = mongoTemplate.getCollection(collectionName);
+		final IndexOperations indexOperations = mongoTemplate.indexOps(collectionName);
+
+		final Map<String, IndexInfo> oldIndexMap = new HashMap<String, IndexInfo>();
+		final Map<String, CompoundIndex> newIndexMap = new HashMap<String, CompoundIndex>();
+
+		for (IndexInfo indexInfo : indexOperations.getIndexInfo()) {
+			if (indexInfo.getName().equalsIgnoreCase("_id_")) {
+				continue;
+			}
+			oldIndexMap.put(indexInfo.getName(), indexInfo);
+		}
+
+		for (CompoundIndex compoundIndex : compoundIndexes.value()) {
+			newIndexMap.put(collection + "." + compoundIndex.name(), compoundIndex);
+		}
+
+		final Collection<String> removeIndexes = new HashSet<String>();
+		removeIndexes.addAll(oldIndexMap.keySet());
+		removeIndexes.removeAll(newIndexMap.keySet());
+
+		final Collection<String> createIndexes = new HashSet<String>();
+		createIndexes.addAll(newIndexMap.keySet());
+		createIndexes.removeAll(oldIndexMap.keySet());
+
+		for (String removeName : removeIndexes) {
+			indexOperations.dropIndex(removeName);
+		}
+
+		for (String createName : createIndexes) {
+			final CompoundIndex compoundIndex = newIndexMap.get(createName);
+			final Map<String, Integer> define = JsonUtils.string2Map(compoundIndex.def(), String.class, Integer.class,
+					LinkedHashMap.class);
+			final Index index = new Index();
+			index.named(createName);
+			for (Entry<String, Integer> entry : define.entrySet()) {
+				index.on(entry.getKey(), entry.getValue() > 0 ? Order.ASCENDING : Order.DESCENDING);
+			}
+			indexOperations.ensureIndex(index);
+		}
+	}
+
+	/**
+	 * @param mongoTemplate
+	 * @param collection
+	 * @param clazz
+	 * @return
+	 */
+	public static String buildCollection(MongoTemplate mongoTemplate, String collection, Class<?> clazz) {
+		if (collecionNames.isEmpty()) {
+			collecionNames.addAll(mongoTemplate.getCollectionNames());
+		}
+		if (!collecionNames.contains(collection)) {
+			collecionNames.add(collection);
+			mongoTemplate.createCollection(collection);
+
+			// TODO 不再检测索引,不再自动修复
+			final CompoundIndexes compoundIndexes = clazz.getAnnotation(CompoundIndexes.class);
+			buildIndexs(mongoTemplate, collection, compoundIndexes);
+		}
+
+		return collection;
+	}
+
+}

@@ -1,0 +1,15 @@
+package com.my9yu.charge.entity;
+
+/**
+ * 充值记录类型
+ * @author Frank
+ */
+public enum ChargeState {
+
+	/** 充值成功状态 */
+	COMPLETE,
+	/** 等待自动补单 */
+	WAIT,
+	/** 取消状态 */
+	CANCEL;
+}
